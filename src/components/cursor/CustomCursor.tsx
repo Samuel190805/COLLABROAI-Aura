@@ -30,8 +30,10 @@ export const CustomCursor: React.FC = () => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
-      // Check if inside Mode B precision zone (sliders, knobs, stem controls, precise tool areas)
-      const precisionParent = target.closest(".mode-b-precision, [data-mode='precision'], input[type='range'], button[role='switch']");
+      // Check if inside native input or precision canvas zone
+      const precisionParent = target.closest(
+        "input[type='range'], input[type='text'], input[type='password'], input[type='email'], textarea, canvas, [data-cursor='native']"
+      );
       if (precisionParent) {
         setIsPrecisionZone(true);
         setIsHoveringInteractive(false);
@@ -40,9 +42,9 @@ export const CustomCursor: React.FC = () => {
         setIsPrecisionZone(false);
       }
 
-      // Check if hovering interactive Mode A element
+      // Check if hovering interactive element
       const interactiveEl = target.closest(
-        "a, button, [data-cursor='magnetic'], [data-cursor='interactive'], .magnetic-target"
+        "a, button, [role='button'], [data-cursor='magnetic'], [data-cursor='interactive'], .magnetic-target"
       );
 
       setIsHoveringInteractive(!!interactiveEl);

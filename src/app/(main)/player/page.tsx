@@ -432,18 +432,20 @@ function MediaPlayerContent() {
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 border-t border-white/10">
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => setIsShuffle(!isShuffle)}
-                      className={`p-2 rounded-xl transition-all ${
-                        isShuffle ? "bg-amber-500 text-white" : "text-neutral-400 hover:text-white"
+                      className={`p-2 rounded-xl cursor-pointer transition-all ${
+                        isShuffle ? "bg-amber-500 text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-white/5"
                       }`}
                       title="Shuffle"
                     >
                       <Shuffle className="w-4 h-4" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => setIsLooping(!isLooping)}
-                      className={`p-2 rounded-xl transition-all ${
-                        isLooping ? "bg-amber-500 text-white" : "text-neutral-400 hover:text-white"
+                      className={`p-2 rounded-xl cursor-pointer transition-all ${
+                        isLooping ? "bg-amber-500 text-white shadow-sm" : "text-neutral-400 hover:text-white hover:bg-white/5"
                       }`}
                       title="Loop"
                     >
@@ -476,11 +478,12 @@ function MediaPlayerContent() {
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1.5">
                       <button
+                        type="button"
                         onClick={() => {
                           setIsMuted(!isMuted);
                           if (mediaRef.current) mediaRef.current.muted = !isMuted;
                         }}
-                        className="text-neutral-400 hover:text-neutral-200"
+                        className="text-neutral-400 hover:text-neutral-200 cursor-pointer p-1 rounded-lg hover:bg-white/5 transition-colors"
                       >
                         {isMuted || volume === 0 ? (
                           <VolumeX className="w-4 h-4 text-red-500" />

@@ -36,21 +36,31 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
       return;
     }
 
-    // Check Windows user pip scripts
-    const userScriptsPath = path.join(
-      process.env.APPDATA || "",
-      "Python",
-      "Python314",
-      "Scripts",
-      "yt-dlp.exe"
-    );
-    if (fs.existsSync(userScriptsPath)) {
-      this.binPath = `"${userScriptsPath}"`;
-      return;
+    // Dynamic search in Windows LOCALAPPDATA and APPDATA Python Scripts folders
+    const candidateDirs = [
+      path.join(process.env.LOCALAPPDATA || "", "Programs", "Python"),
+      path.join(process.env.APPDATA || "", "Python"),
+    ];
+
+    for (const baseDir of candidateDirs) {
+      if (fs.existsSync(/*turbopackIgnore: true*/ baseDir)) {
+        try {
+          const subdirs = fs.readdirSync(/*turbopackIgnore: true*/ baseDir);
+          for (const sub of subdirs) {
+            const exePath = path.join(baseDir, sub, "Scripts", "yt-dlp.exe");
+            if (fs.existsSync(/*turbopackIgnore: true*/ exePath)) {
+              this.binPath = `"${exePath}"`;
+              return;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
 
     // Default to python module execution or yt-dlp in PATH
-    this.binPath = "python -m yt_dlp";
+    this.binPath = "yt-dlp";
   }
 
   private async executeYtDlp(args: string[], timeoutMs = 120000): Promise<{ stdout: string; stderr: string }> {
@@ -80,10 +90,39 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
     }
   }
 
+  private async resolveTargetUrl(validation: any, rawUrl: string): Promise<string> {
+    if (validation.platform === "spotify") {
+      try {
+        console.log(`[YtDlpMediaResolver] Resolving Spotify metadata via oEmbed for ${rawUrl}...`);
+        const spotRes = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(rawUrl)}`);
+        if (spotRes.ok) {
+          const spotData = await spotRes.json();
+          const songTitle = spotData.title || "";
+          const query = songTitle ? `${songTitle} audio` : "popular song audio";
+          console.log(`[YtDlpMediaResolver] Spotify track resolved: "${songTitle}" -> query: "${query}"`);
+          return `ytsearch1:${query}`;
+        }
+      } catch (err) {
+        console.warn(`[YtDlpMediaResolver] Spotify oEmbed lookup error:`, err);
+      }
+    } else if (validation.platform === "apple_music") {
+      try {
+        const match = rawUrl.match(/\/album\/([^/]+)/i);
+        const songName = match ? match[1].replace(/-/g, " ") : "";
+        if (songName) {
+          return `ytsearch1:${songName} audio`;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    return validation.normalizedUrl;
+  }
+
   async resolveInfo(url: string): Promise<MediaMetadata> {
     const trimmed = url.trim();
 
-    // FIX 4: DRM Protection Check
+    // DRM Protection Check
     const validation = validateAndNormalizeSourceUrl(trimmed);
     if (validation.isDrmProtected) {
       console.warn(`[YtDlpMediaResolver] Rejected DRM protected URL (${validation.platform}): ${trimmed}`);
@@ -93,8 +132,8 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
       throw new Error(validation.error || "Invalid media URL");
     }
 
-    const targetUrl = validation.normalizedUrl;
-    console.log(`[YtDlpMediaResolver] Resolving metadata for normalized URL: ${targetUrl} (Platform: ${validation.platform})`);
+    const targetUrl = await this.resolveTargetUrl(validation, trimmed);
+    console.log(`[YtDlpMediaResolver] Resolving metadata for target: ${targetUrl} (Platform: ${validation.platform})`);
 
     // Attempt metadata resolution with 1 automatic retry
     let lastError: Error | null = null;
@@ -188,8 +227,7 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
     if (!validation.isValid) {
       throw new Error(validation.error || "Invalid URL provided for download");
     }
-
-    const targetUrl = validation.normalizedUrl;
+    const targetUrl = await this.resolveTargetUrl(validation, url);
     const isAudio = ["mp3", "wav", "flac", "m4a", "aac", "ogg"].includes(targetFormat);
     const rawExt = isAudio ? "m4a" : "mp4";
     const rawOutputPath = path.join(outputDirectory, `stream_raw.${rawExt}`);

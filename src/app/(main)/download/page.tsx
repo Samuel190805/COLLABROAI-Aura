@@ -441,14 +441,14 @@ function LinkDownloaderContent() {
                     </Button>
                   )}
 
-                  <a
+                  <Button
                     href={downloadedAsset.filePath}
                     download={`${downloadedAsset.name}.${downloadedAsset.format}`}
+                    size="sm"
+                    className="text-xs flex items-center gap-1.5 bg-apple-blue hover:bg-apple-blueHover text-white shadow-apple"
                   >
-                    <Button size="sm" className="text-xs flex items-center gap-1.5 bg-apple-blue hover:bg-apple-blueHover text-white">
-                      <Download className="w-3.5 h-3.5" /> Save to Device
-                    </Button>
-                  </a>
+                    <Download className="w-3.5 h-3.5" /> Save to Device
+                  </Button>
 
                   <Button
                     variant="glass"

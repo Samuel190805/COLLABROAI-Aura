@@ -254,25 +254,31 @@ export default function AudioPlayerPage() {
               {/* Main Controls */}
               <div className="flex items-center justify-center gap-4 sm:gap-6 mb-6">
                 <button
+                  type="button"
                   onClick={() => setIsShuffle(!isShuffle)}
-                  className={`p-2 rounded-full transition-colors ${
-                    isShuffle ? "text-apple-blue" : "text-neutral-400 hover:text-white"
+                  className={`p-2 rounded-full transition-colors cursor-pointer ${
+                    isShuffle ? "text-apple-blue bg-apple-blue/10" : "text-neutral-400 hover:text-white"
                   }`}
+                  title="Shuffle"
                 >
                   <Shuffle className="w-5 h-5" />
                 </button>
 
                 <button
+                  type="button"
                   onClick={handlePrev}
-                  className="p-2.5 rounded-full text-neutral-300 hover:bg-neutral-800 transition-colors"
+                  className="p-2.5 rounded-full text-neutral-300 hover:bg-neutral-800 transition-colors cursor-pointer active:scale-95"
+                  title="Previous Track"
                 >
                   <SkipBack className="w-5 h-5" />
                 </button>
 
                 <button
+                  type="button"
                   onClick={togglePlay}
                   disabled={!currentTrack}
-                  className="w-14 h-14 rounded-full bg-apple-blue text-white flex items-center justify-center shadow-lg shadow-apple-blue/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                  className="w-14 h-14 rounded-full bg-apple-blue text-white flex items-center justify-center shadow-lg shadow-apple-blue/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  title={isPlaying ? "Pause" : "Play"}
                 >
                   {isPlaying ? (
                     <Pause className="w-6 h-6 fill-current" />
@@ -282,17 +288,21 @@ export default function AudioPlayerPage() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={handleNext}
-                  className="p-2.5 rounded-full text-neutral-300 hover:bg-neutral-800 transition-colors"
+                  className="p-2.5 rounded-full text-neutral-300 hover:bg-neutral-800 transition-colors cursor-pointer active:scale-95"
+                  title="Next Track"
                 >
                   <SkipForward className="w-5 h-5" />
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setIsLooping(!isLooping)}
-                  className={`p-2 rounded-full transition-colors ${
-                    isLooping ? "text-apple-blue" : "text-neutral-400 hover:text-white"
+                  className={`p-2 rounded-full transition-colors cursor-pointer ${
+                    isLooping ? "text-apple-blue bg-apple-blue/10" : "text-neutral-400 hover:text-white"
                   }`}
+                  title="Loop"
                 >
                   <Repeat className="w-5 h-5" />
                 </button>
@@ -301,6 +311,7 @@ export default function AudioPlayerPage() {
               {/* Volume Slider */}
               <div className="flex items-center gap-3 w-48">
                 <button
+                  type="button"
                   onClick={() => {
                     if (audioRef.current) {
                       const next = !isMuted;
@@ -308,7 +319,8 @@ export default function AudioPlayerPage() {
                       audioRef.current.muted = next;
                     }
                   }}
-                  className="text-neutral-400 hover:text-white"
+                  className="text-neutral-400 hover:text-white cursor-pointer"
+                  title={isMuted ? "Unmute" : "Mute"}
                 >
                   {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-red-500" /> : <Volume2 className="w-4 h-4" />}
                 </button>
@@ -396,16 +408,16 @@ export default function AudioPlayerPage() {
                     <div
                       key={item.id}
                       onClick={() => playIndex(idx)}
-                      className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-200 ${
+                      className={`group flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-200 ${
                         isSelected
                           ? "bg-apple-blue/15 border-apple-blue/30 shadow-sm"
-                          : "bg-white/5 border-white/5 hover:border-white/20"
+                          : "bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/[0.08]"
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div
                           className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                            isSelected ? "bg-apple-blue text-white" : "bg-neutral-800 text-neutral-400"
+                            isSelected ? "bg-apple-blue text-white shadow-sm shadow-apple-blue/40" : "bg-neutral-800 text-neutral-400 group-hover:text-white"
                           }`}
                         >
                           {isItemPlaying ? (
@@ -417,7 +429,7 @@ export default function AudioPlayerPage() {
                         <div className="min-w-0">
                           <h5
                             className={`text-xs font-semibold truncate ${
-                              isSelected ? "text-apple-blueAccent font-bold" : "text-neutral-200"
+                              isSelected ? "text-apple-blue font-bold" : "text-neutral-200 group-hover:text-white"
                             }`}
                           >
                             {item.title}
@@ -429,10 +441,12 @@ export default function AudioPlayerPage() {
                       </div>
 
                       <button
+                        type="button"
                         onClick={(e) => handleDeleteItem(item.id, e)}
-                        className="p-1 rounded-lg text-neutral-400 hover:text-red-500 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
+                        className="p-1.5 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-red-500/10 opacity-70 group-hover:opacity-100 transition-all cursor-pointer"
+                        title="Delete from Queue"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   );

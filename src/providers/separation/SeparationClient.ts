@@ -320,9 +320,8 @@ export class SeparationClient implements SeparationProviderPort {
       await new Promise<void>((res, rej) => {
         getFfmpeg()(audioFilePath)
           .audioFilters([
-            "pan=stereo|c0=c0-c1|c1=c1-c0",
-            "highpass=f=350",
-            "lowpass=f=14000",
+            "highpass=f=300",
+            "lowpass=f=12000",
             "equalizer=f=1200:t=q:w=1.5:g=-25",
             "equalizer=f=2600:t=q:w=1.5:g=-20",
           ])
@@ -354,11 +353,10 @@ export class SeparationClient implements SeparationProviderPort {
       await new Promise<void>((res, rej) => {
         getFfmpeg()(audioFilePath)
           .audioFilters([
-            "pan=stereo|c0=c0-c1|c1=c1-c0",
             "highpass=f=260",
+            "lowpass=f=12000",
             "equalizer=f=1200:t=q:w=1.5:g=-25",
             "equalizer=f=2600:t=q:w=1.5:g=-20",
-            "lowpass=f=14000",
           ])
           .output(otherPath)
           .on("end", () => res())

@@ -20,6 +20,7 @@ export const Knob: React.FC<KnobProps> = ({
   value,
   min = -100,
   max = 100,
+  step = 1,
   size = 48,
   label,
   unit = "",
@@ -35,48 +36,99 @@ export const Knob: React.FC<KnobProps> = ({
   // Map to 270 degree rotation arc (-135deg to +135deg)
   const rotationDeg = -135 + percentage * 270;
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleStart = (clientY: number) => {
     setIsDragging(true);
-    startYRef.current = e.clientY;
+    startYRef.current = clientY;
     startValRef.current = value;
   };
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    handleStart(e.clientY);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length > 0) {
+      handleStart(e.touches[0].clientY);
+    }
+  };
+
+  const handleMove = useCallback(
+    (clientY: number) => {
       if (!isDragging) return;
-      const dy = startYRef.current - e.clientY;
+      const dy = startYRef.current - clientY;
       const range = max - min;
       const deltaVal = (dy / 100) * range;
-      const nextVal = Math.min(max, Math.max(min, Math.round(startValRef.current + deltaVal)));
+      const rawNext = startValRef.current + deltaVal;
+      const steppedVal = Math.round(rawNext / step) * step;
+      const nextVal = Math.min(max, Math.max(min, steppedVal));
       onChange(nextVal);
     },
-    [isDragging, max, min, onChange]
+    [isDragging, max, min, step, onChange]
   );
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      handleMove(e.clientY);
+    },
+    [handleMove]
+  );
+
+  const handleTouchMove = useCallback(
+    (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        handleMove(e.touches[0].clientY);
+      }
+    },
+    [handleMove]
+  );
+
+  const handleEnd = useCallback(() => {
     setIsDragging(false);
   }, []);
 
   useEffect(() => {
     if (isDragging) {
       window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
+      window.addEventListener("mouseup", handleEnd);
+      window.addEventListener("touchmove", handleTouchMove, { passive: true });
+      window.addEventListener("touchend", handleEnd);
     }
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("mouseup", handleEnd);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleEnd);
     };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
+  }, [isDragging, handleMouseMove, handleTouchMove, handleEnd]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") {
+      e.preventDefault();
+      onChange(Math.min(max, value + (step || 5)));
+    } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      onChange(Math.max(min, value - (step || 5)));
+    }
+  };
 
   return (
     <div className={cn("flex flex-col items-center select-none", className)}>
       <div
+        role="slider"
+        aria-label={label || "Control Knob"}
+        aria-valuenow={value}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
         onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
         style={{ width: size, height: size }}
-        className="relative rounded-full bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-300/80 dark:border-white/10 shadow-inner flex items-center justify-center cursor-ns-resize"
+        className="relative rounded-full bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-300/80 dark:border-white/10 shadow-inner flex items-center justify-center cursor-ns-resize focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue/50"
       >
         <div
-          className="w-1.5 h-1.5 rounded-full absolute transition-transform duration-75"
+          className="w-1.5 h-1.5 rounded-full absolute transition-transform duration-75 pointer-events-none"
           style={{
             top: 6,
             backgroundColor: accentColor,
@@ -84,7 +136,7 @@ export const Knob: React.FC<KnobProps> = ({
             transformOrigin: `50% ${size / 2 - 6}px`,
           }}
         />
-        <div className="w-6 h-6 rounded-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shadow-sm" />
+        <div className="w-6 h-6 rounded-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shadow-sm pointer-events-none" />
       </div>
       {label && (
         <span className="mt-1 text-[10px] uppercase tracking-wider font-semibold text-neutral-400">

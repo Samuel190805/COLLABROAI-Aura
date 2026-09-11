@@ -247,14 +247,32 @@ function StemSeparatorContent() {
                 {inputMode === "url" && (
                   <div className="flex flex-col gap-2">
                     <Input
-                      label="Media URL"
-                      placeholder="https://www.youtube.com/watch?v=..."
+                      label="Media URL or Song Search"
+                      placeholder="YouTube URL, Spotify link, or 'Artist - Song'..."
                       value={urlInput}
                       onChange={(e) => setUrlInput(e.target.value)}
                       leftIcon={<Link2 className="w-4 h-4 text-apple-blue" />}
                     />
+                    <div className="flex items-center flex-wrap gap-2 pt-1">
+                      <span className="text-[11px] text-neutral-400 font-mono">1-Click Demos:</span>
+                      {[
+                        { label: "Never Gonna Give You Up", query: "Rick Astley Never Gonna Give You Up" },
+                        { label: "Lofi Chill Beat", query: "Lofi hip hop chill beat instrumental" },
+                        { label: "Acoustic Guitar Jam", query: "Acoustic guitar and vocal melody session" },
+                      ].map((demo) => (
+                        <button
+                          key={demo.label}
+                          type="button"
+                          onClick={() => setUrlInput(demo.query)}
+                          className="px-2.5 py-1 text-[11px] rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition-all flex items-center gap-1"
+                        >
+                          <Sparkles className="w-3 h-3 text-indigo-400" />
+                          {demo.label}
+                        </button>
+                      ))}
+                    </div>
                     <p className="text-[11px] text-neutral-400 ml-1">
-                      Audio will be resolved and downloaded server-side before running source separation.
+                      Supports YouTube, Spotify tracks, SoundCloud, and direct song title searches with auto-resolution.
                     </p>
                   </div>
                 )}

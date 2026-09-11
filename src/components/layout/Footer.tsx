@@ -36,6 +36,12 @@ export const Footer: React.FC = () => {
             <Link href="/player" className="hover:text-white transition-colors">
               Studio Player
             </Link>
+            <Link href="/audio-player" className="hover:text-white transition-colors">
+              Local Audio
+            </Link>
+            <Link href="/video-player" className="hover:text-white transition-colors">
+              Local Video
+            </Link>
             <Link href="/chords" className="hover:text-white transition-colors">
               Chord Detector
             </Link>

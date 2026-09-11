@@ -15,7 +15,15 @@ export async function GET() {
   let ffmpegStatus = "unknown";
   let ffmpegVersion = "";
   try {
-    const { stdout } = await execAsync("ffmpeg -version", { timeout: 3000 });
+    let ffmpegCmd = "ffmpeg";
+    try {
+      const ffmpegStatic = require("ffmpeg-static");
+      const fsSync = require("fs");
+      if (ffmpegStatic && fsSync.existsSync(ffmpegStatic)) {
+        ffmpegCmd = `"${ffmpegStatic}"`;
+      }
+    } catch {}
+    const { stdout } = await execAsync(`${ffmpegCmd} -version`, { timeout: 3000 });
     ffmpegStatus = "healthy";
     ffmpegVersion = stdout.split("\n")[0] || "Installed";
   } catch (err: any) {

@@ -1,11 +1,11 @@
 /**
  * Source URL Validator & Normalizer
- * Fix 3: Full YouTube URL Shape Normalization
- * Fix 4: Reject DRM-Protected Platforms & Validate Domain Allow-List
+ * Fix 3: Full YouTube URL Shape Normalization & Search Query Auto-Detection
+ * Fix 4: Audio Streaming Resolution (Spotify, Apple Music) & Video DRM Protection Rejection
  */
 
-// List of known DRM-protected streaming platforms that cannot and should not be extracted
-export const DRM_DOMAINS = [
+// List of known DRM-protected video streaming platforms (with EME/Widevine) that cannot be directly extracted
+export const VIDEO_DRM_DOMAINS = [
   "hotstar.com",
   "jiohotstar.com",
   "jiocinema.com",
@@ -14,8 +14,6 @@ export const DRM_DOMAINS = [
   "amazon.com/gp/video",
   "amazon.com/video",
   "disneyplus.com",
-  "spotify.com",
-  "music.apple.com",
   "tv.apple.com",
   "hulu.com",
   "hbomax.com",
@@ -41,6 +39,8 @@ export const SUPPORTED_ALLOWLIST_DOMAINS = [
   "twitch.tv",
   "mixcloud.com",
   "archive.org",
+  "spotify.com",
+  "music.apple.com",
 ];
 
 export interface ValidatedSourceUrl {
@@ -54,15 +54,6 @@ export interface ValidatedSourceUrl {
 
 /**
  * Normalizes all common YouTube URL formats to a canonical 11-char video ID and standard URL.
- * Handles:
- * - https://www.youtube.com/watch?v=VIDEO_ID
- * - https://youtu.be/VIDEO_ID?t=45s
- * - https://m.youtube.com/watch?v=VIDEO_ID
- * - https://www.youtube.com/shorts/VIDEO_ID
- * - https://www.youtube.com/embed/VIDEO_ID
- * - https://music.youtube.com/watch?v=VIDEO_ID
- * - https://www.youtube.com/live/VIDEO_ID
- * - Raw 11-character video ID
  */
 export function extractCanonicalYouTubeId(input: string): string | null {
   if (!input) return null;
@@ -74,7 +65,7 @@ export function extractCanonicalYouTubeId(input: string): string | null {
   }
 
   const patterns = [
-    /(?:https?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/watch\?(?:.*&)?v=([a-zA-Z0-9_-]{11})/i,
+    /(?:https?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/watch\?(?:[^#\s]*&)?v=([a-zA-Z0-9_-]{11})/i,
     /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/i,
     /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i,
     /(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i,
@@ -93,7 +84,7 @@ export function extractCanonicalYouTubeId(input: string): string | null {
 }
 
 /**
- * Validates any incoming media URL against DRM restrictions and supported platform rules.
+ * Validates any incoming media URL or search query against DRM restrictions and supported platform rules.
  */
 export function validateAndNormalizeSourceUrl(rawUrl: string): ValidatedSourceUrl {
   if (!rawUrl || typeof rawUrl !== "string" || !rawUrl.trim()) {
@@ -103,13 +94,24 @@ export function validateAndNormalizeSourceUrl(rawUrl: string): ValidatedSourceUr
       normalizedUrl: "",
       youtubeVideoId: null,
       platform: "unknown",
-      error: "Please enter a valid media URL",
+      error: "Please enter a valid media URL or search query",
     };
   }
 
   const trimmed = rawUrl.trim();
 
-  // Check for direct 11-char YouTube ID
+  // 1. Direct ytsearch or search query
+  if (trimmed.startsWith("ytsearch:") || trimmed.startsWith("ytsearch1:")) {
+    return {
+      isValid: true,
+      isDrmProtected: false,
+      normalizedUrl: trimmed,
+      youtubeVideoId: null,
+      platform: "search",
+    };
+  }
+
+  // 2. Check for direct 11-char YouTube ID
   const ytId = extractCanonicalYouTubeId(trimmed);
   if (ytId && !trimmed.includes("http") && !trimmed.includes(".")) {
     return {
@@ -121,42 +123,83 @@ export function validateAndNormalizeSourceUrl(rawUrl: string): ValidatedSourceUr
     };
   }
 
-  // Parse URL safely
+  // 3. Detect if input is a plain text song/artist search rather than a structured URL
+  const looksLikeUrl =
+    /^(https?:\/\/|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\/|\?|$))/i.test(trimmed);
+
+  if (!looksLikeUrl && trimmed.length >= 2) {
+    return {
+      isValid: true,
+      isDrmProtected: false,
+      normalizedUrl: `ytsearch1:${trimmed}`,
+      youtubeVideoId: null,
+      platform: "search",
+    };
+  }
+
+  // 4. Parse URL safely
   let parsedUrl: URL;
   try {
-    const withProtocol = trimmed.startsWith("http://") || trimmed.startsWith("https://")
-      ? trimmed
-      : `https://${trimmed}`;
+    const withProtocol =
+      trimmed.startsWith("http://") || trimmed.startsWith("https://")
+        ? trimmed
+        : `https://${trimmed}`;
     parsedUrl = new URL(withProtocol);
   } catch {
+    // If not a standard URL, treat as search query for seamless 1-click experience
     return {
-      isValid: false,
+      isValid: true,
       isDrmProtected: false,
-      normalizedUrl: trimmed,
+      normalizedUrl: `ytsearch1:${trimmed}`,
       youtubeVideoId: null,
-      platform: "unknown",
-      error: "Invalid URL structure",
+      platform: "search",
     };
   }
 
   const hostname = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
   const fullPath = parsedUrl.pathname.toLowerCase();
 
-  // FIX 4: Check if the domain is a known DRM-protected platform
-  for (const drmDomain of DRM_DOMAINS) {
-    if (hostname === drmDomain || hostname.endsWith(`.${drmDomain}`) || (hostname + fullPath).includes(drmDomain)) {
+  // 5. Spotify Track / Album Support (Audio Resolution)
+  if (hostname === "spotify.com" || hostname.endsWith(".spotify.com")) {
+    return {
+      isValid: true,
+      isDrmProtected: false,
+      normalizedUrl: trimmed,
+      youtubeVideoId: null,
+      platform: "spotify",
+    };
+  }
+
+  // 6. Apple Music Support (Audio Resolution)
+  if (hostname === "music.apple.com" || hostname.endsWith(".music.apple.com")) {
+    return {
+      isValid: true,
+      isDrmProtected: false,
+      normalizedUrl: trimmed,
+      youtubeVideoId: null,
+      platform: "apple_music",
+    };
+  }
+
+  // 7. Check if domain is a known DRM-protected video platform
+  for (const drmDomain of VIDEO_DRM_DOMAINS) {
+    if (
+      hostname === drmDomain ||
+      hostname.endsWith(`.${drmDomain}`) ||
+      (hostname + fullPath).includes(drmDomain)
+    ) {
       return {
         isValid: false,
         isDrmProtected: true,
         normalizedUrl: trimmed,
         youtubeVideoId: null,
         platform: drmDomain,
-        error: "This source isn't supported — it may be DRM-protected.",
+        error: "This video source is protected by DRM encryption (e.g. Netflix / Hotstar) and cannot be extracted.",
       };
     }
   }
 
-  // Check if it's a YouTube URL in any supported shape
+  // 8. Canonical YouTube URL shape
   if (ytId) {
     return {
       isValid: true,
@@ -167,12 +210,12 @@ export function validateAndNormalizeSourceUrl(rawUrl: string): ValidatedSourceUr
     };
   }
 
-  // Check against supported allow-list domains
+  // 9. Check against supported allow-list domains
   const isSupportedAllowlisted = SUPPORTED_ALLOWLIST_DOMAINS.some(
     (allowed) => hostname === allowed || hostname.endsWith(`.${allowed}`)
   );
 
-  // Check if direct audio or video file URL
+  // 10. Check if direct audio or video file URL
   const isDirectMediaFile = /\.(mp3|wav|flac|m4a|aac|ogg|mp4|webm|mkv|mov|avi)(\?.*)?$/i.test(
     parsedUrl.pathname
   );
@@ -187,7 +230,7 @@ export function validateAndNormalizeSourceUrl(rawUrl: string): ValidatedSourceUr
     };
   }
 
-  // Generic web URL (not explicitly DRM, but allow if standard HTTP/HTTPS)
+  // 11. Generic web URL
   return {
     isValid: true,
     isDrmProtected: false,
@@ -196,3 +239,6 @@ export function validateAndNormalizeSourceUrl(rawUrl: string): ValidatedSourceUr
     platform: hostname,
   };
 }
+
+export const DRM_DOMAINS = VIDEO_DRM_DOMAINS;
+export default validateAndNormalizeSourceUrl;

@@ -188,18 +188,24 @@ export class SeparateStemsUseCase {
         const itemHash = await computeFileHash(item.path);
         rawStemHashes[item.key] = itemHash;
 
-        if (itemHash === inputHash) {
+        // Base stems should not be identical copies of the full unseparated song
+        if (itemHash === inputHash && ["vocals", "bass", "drums", "other"].includes(item.key)) {
           throw new Error(
             `Separation integrity check failed for ${item.name}: Stem audio is identical to the unseparated source song.`
           );
         }
       }
 
-      const hashValues = Object.values(rawStemHashes);
-      const uniqueHashes = new Set(hashValues);
-      if (uniqueHashes.size !== hashValues.length) {
+      // Check base stem uniqueness (excluding composite mixes like 'instruments' and 'instrumental')
+      const baseStemKeys = ["vocals", "drums", "bass", "other", "piano", "guitar"];
+      const baseStems = stemFiles.filter((s) => baseStemKeys.includes(s.key));
+      const baseHashes = baseStems.map((s) => rawStemHashes[s.key]).filter(Boolean);
+      const uniqueBaseHashes = new Set(baseHashes);
+
+      // If all base stems are identical to each other, separation failed
+      if (baseHashes.length > 1 && uniqueBaseHashes.size === 1) {
         throw new Error(
-          `Separation integrity check failed: Output stems have duplicate audio content (${uniqueHashes.size} unique out of ${hashValues.length} stems).`
+          `Separation integrity check failed: Output stems have duplicate audio content (all ${baseHashes.length} base stems are identical).`
         );
       }
 

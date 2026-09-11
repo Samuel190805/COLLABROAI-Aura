@@ -731,14 +731,15 @@ export default function TranslateSpeakPage() {
                     <Play className="w-3.5 h-3.5 fill-current" /> Play Voice
                   </Button>
 
-                  <a
+                  <Button
                     href={translatedAsset.filePath}
                     download={`translated_${translatedAsset.metadata?.targetLanguage || "speech"}.mp3`}
+                    variant="glass"
+                    size="sm"
+                    className="text-xs flex items-center gap-1.5"
                   >
-                    <Button variant="glass" size="sm" className="text-xs flex items-center gap-1.5">
-                      <Download className="w-3.5 h-3.5" /> Download Audio
-                    </Button>
-                  </a>
+                    <Download className="w-3.5 h-3.5" /> Download Audio
+                  </Button>
                 </div>
               </Card>
             </div>

@@ -87,19 +87,15 @@ export default function HomePage() {
           {/* Action CTAs with Magnetic Physics */}
           <div className="flex flex-wrap items-center gap-4 mt-8">
             <MagneticWrapper strength={0.3}>
-              <Link href="/stems">
-                <Button size="lg" className="flex items-center gap-2 shadow-apple bg-apple-blue hover:bg-apple-blueHover text-white">
-                  <Sliders className="w-4 h-4" /> Separate Stems
-                </Button>
-              </Link>
+              <Button href="/stems" size="lg" className="flex items-center gap-2 shadow-apple bg-apple-blue hover:bg-apple-blueHover text-white">
+                <Sliders className="w-4 h-4" /> Separate Stems
+              </Button>
             </MagneticWrapper>
 
             <MagneticWrapper strength={0.3}>
-              <Link href="/mashup">
-                <Button variant="glass" size="lg" className="flex items-center gap-2">
-                  <Layers className="w-4 h-4" /> Mashup Studio
-                </Button>
-              </Link>
+              <Button href="/mashup" variant="glass" size="lg" className="flex items-center gap-2">
+                <Layers className="w-4 h-4" /> Mashup Studio
+              </Button>
             </MagneticWrapper>
 
             <MagneticWrapper strength={0.3}>
@@ -192,12 +188,10 @@ export default function HomePage() {
 
             <div className="pt-4">
               <MagneticWrapper strength={0.3}>
-                <Link href="/stems">
-                  <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-apple">
-                    <span>Open Stem Separator</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
+                <Button href="/stems" size="lg" className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-apple">
+                  <span>Open Stem Separator</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
               </MagneticWrapper>
             </div>
           </div>
@@ -257,12 +251,10 @@ export default function HomePage() {
 
             <div className="pt-4">
               <MagneticWrapper strength={0.3}>
-                <Link href="/download">
-                  <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 shadow-apple">
-                    <span>Open Universal Downloader</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
+                <Button href="/download" size="lg" className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 shadow-apple">
+                  <span>Open Universal Downloader</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
               </MagneticWrapper>
             </div>
           </div>
@@ -312,12 +304,10 @@ export default function HomePage() {
 
             <div className="pt-4">
               <MagneticWrapper strength={0.3}>
-                <Link href="/translate">
-                  <Button size="lg" className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 shadow-apple">
-                    <span>Open Translate & Speak</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
+                <Button href="/translate" size="lg" className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 shadow-apple">
+                  <span>Open Translate & Speak</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
               </MagneticWrapper>
             </div>
           </div>
@@ -385,12 +375,10 @@ export default function HomePage() {
 
             <div className="pt-4">
               <MagneticWrapper strength={0.3}>
-                <Link href="/player">
-                  <Button size="lg" className="bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-2 shadow-apple">
-                    <span>Open Studio Player</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
+                <Button href="/player" size="lg" className="bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-2 shadow-apple">
+                  <span>Open Studio Player</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
               </MagneticWrapper>
             </div>
           </div>
@@ -440,12 +428,10 @@ export default function HomePage() {
 
             <div className="pt-4">
               <MagneticWrapper strength={0.3}>
-                <Link href="/chords">
-                  <Button size="lg" className="bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-2 shadow-apple">
-                    <span>Open Chord Detector</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
+                <Button href="/chords" size="lg" className="bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-2 shadow-apple">
+                  <span>Open Chord Detector</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
               </MagneticWrapper>
             </div>
           </div>
@@ -505,12 +491,10 @@ export default function HomePage() {
 
             <div className="pt-4">
               <MagneticWrapper strength={0.3}>
-                <Link href="/mashup">
-                  <Button size="lg" className="bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-2 shadow-apple">
-                    <span>Open AI Mashup Creator</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
+                <Button href="/mashup" size="lg" className="bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-2 shadow-apple">
+                  <span>Open AI Mashup Creator</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
               </MagneticWrapper>
             </div>
           </div>
@@ -548,11 +532,9 @@ export default function HomePage() {
             </MagneticWrapper>
 
             <MagneticWrapper strength={0.35}>
-              <Link href="/stems">
-                <Button variant="glass" size="lg" className="px-8 py-4 rounded-full text-sm font-bold">
-                  Start Stem Isolation
-                </Button>
-              </Link>
+              <Button href="/stems" variant="glass" size="lg" className="px-8 py-4 rounded-full text-sm font-bold">
+                Start Stem Isolation
+              </Button>
             </MagneticWrapper>
           </div>
         </div>

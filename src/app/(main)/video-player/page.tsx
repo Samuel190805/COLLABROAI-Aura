@@ -274,18 +274,18 @@ function VideoPlayerContent() {
                         <div
                           key={item.id}
                           onClick={() => setCurrentIndex(idx)}
-                          className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-200 ${
+                          className={`group flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-200 ${
                             isSelected
                               ? "bg-apple-blue/15 border-apple-blue/30 shadow-sm"
-                              : "bg-white/5 border-white/5 hover:border-white/20"
+                              : "bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/[0.08]"
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div
                               className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                                 isSelected
-                                  ? "bg-apple-blue text-white"
-                                  : "bg-neutral-800 text-neutral-400"
+                                  ? "bg-apple-blue text-white shadow-sm shadow-apple-blue/40"
+                                  : "bg-neutral-800 text-neutral-400 group-hover:text-white"
                               }`}
                             >
                               <Play className="w-4 h-4 fill-current ml-0.5" />
@@ -293,7 +293,7 @@ function VideoPlayerContent() {
                             <div className="min-w-0">
                               <h5
                                 className={`text-xs font-semibold truncate ${
-                                  isSelected ? "text-apple-blueAccent font-bold" : "text-neutral-200"
+                                  isSelected ? "text-apple-blue font-bold" : "text-neutral-200 group-hover:text-white"
                                 }`}
                               >
                                 {item.title}
@@ -305,10 +305,12 @@ function VideoPlayerContent() {
                           </div>
 
                           <button
+                            type="button"
                             onClick={(e) => handleDeleteItem(item.id, e)}
-                            className="p-1 rounded-lg text-neutral-400 hover:text-red-500 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
+                            className="p-1.5 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-red-500/10 opacity-70 group-hover:opacity-100 transition-all cursor-pointer"
+                            title="Delete from Queue"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       );

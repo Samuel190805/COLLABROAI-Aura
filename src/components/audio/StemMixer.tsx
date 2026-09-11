@@ -350,15 +350,16 @@ export const StemMixer: React.FC<StemMixerProps> = ({
           <div className="flex items-center gap-1.5">
             {/* Individual Stem Isolated Play / Pause Button */}
             <button
+              type="button"
               onClick={() => togglePreview(track)}
               title={
                 isThisPreviewing
                   ? `Pause ${track.name} preview`
                   : `Play ${track.name} in isolation`
               }
-              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
                 isThisPreviewing
-                  ? "bg-apple-blue text-white shadow-lg ring-2 ring-apple-blue/30 scale-105"
+                  ? "bg-apple-blue text-white shadow-lg ring-2 ring-apple-blue/40 scale-105"
                   : "bg-white/10 text-neutral-300 hover:text-white hover:bg-white/20 active:scale-95"
               }`}
             >
@@ -371,12 +372,13 @@ export const StemMixer: React.FC<StemMixerProps> = ({
 
             {/* Solo Button */}
             <button
+              type="button"
               onClick={() => updateTrackState(track.id, { isSolo: !state.isSolo })}
               title="Solo this track"
-              className={`w-8 h-8 rounded-xl text-xs font-black transition-all ${
+              className={`w-8 h-8 rounded-xl text-xs font-black transition-all cursor-pointer ${
                 state.isSolo
-                  ? "bg-amber-400 text-black shadow-md scale-105"
-                  : "bg-white/10 text-neutral-400 hover:text-white hover:bg-white/20"
+                  ? "bg-amber-400 text-black shadow-md scale-105 hover:bg-amber-300"
+                  : "bg-white/10 text-neutral-400 hover:text-white hover:bg-white/20 active:scale-95"
               }`}
             >
               S
@@ -384,12 +386,13 @@ export const StemMixer: React.FC<StemMixerProps> = ({
 
             {/* Mute Button */}
             <button
+              type="button"
               onClick={() => updateTrackState(track.id, { isMuted: !state.isMuted })}
               title="Mute this track"
-              className={`w-8 h-8 rounded-xl text-xs font-black transition-all ${
+              className={`w-8 h-8 rounded-xl text-xs font-black transition-all cursor-pointer ${
                 state.isMuted
-                  ? "bg-red-500 text-white shadow-md scale-105"
-                  : "bg-white/10 text-neutral-400 hover:text-white hover:bg-white/20"
+                  ? "bg-rose-500 text-white shadow-md scale-105 hover:bg-rose-600"
+                  : "bg-white/10 text-neutral-400 hover:text-white hover:bg-white/20 active:scale-95"
               }`}
             >
               M
@@ -425,7 +428,7 @@ export const StemMixer: React.FC<StemMixerProps> = ({
           <a
             href={track.url}
             download={`${track.name.toLowerCase().replace(/\s+/g, "_")}.${track.format || "mp3"}`}
-            className="p-2.5 rounded-xl bg-white/10 text-neutral-300 hover:bg-apple-blue hover:text-white transition-all shadow-sm active:scale-95"
+            className="p-2.5 rounded-xl bg-white/10 text-neutral-300 hover:bg-apple-blue hover:text-white transition-all shadow-sm active:scale-95 cursor-pointer"
             title={`Download ${track.name}`}
           >
             <Download className="w-4 h-4" />
@@ -522,8 +525,10 @@ export const StemMixer: React.FC<StemMixerProps> = ({
 
           <div className="flex items-center gap-2.5 border-l border-white/10 pl-3">
             <button
+              type="button"
               onClick={() => setIsMasterMuted(!isMasterMuted)}
-              className="text-neutral-400 hover:text-white transition-colors"
+              className="text-neutral-400 hover:text-white transition-colors cursor-pointer"
+              title={isMasterMuted ? "Unmute Master" : "Mute Master"}
             >
               {isMasterMuted || masterVolume === 0 ? (
                 <VolumeX className="w-4 h-4 text-red-500" />
@@ -573,8 +578,9 @@ export const StemMixer: React.FC<StemMixerProps> = ({
       {advancedTracks.length > 0 && (
         <div className="mt-4 pt-4 border-t border-white/10 flex flex-col items-center">
           <button
+            type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="px-4 py-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-neutral-300 hover:text-white flex items-center gap-2 transition-all shadow-sm"
+            className="px-4 py-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-neutral-300 hover:text-white flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
           >
             <Layers className="w-3.5 h-3.5 text-indigo-400" />
             <span>

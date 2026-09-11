@@ -497,11 +497,12 @@ function ChordDetectorContent() {
                           {[0.5, 0.75, 1.0, 1.25].map((spd) => (
                             <button
                               key={spd}
+                              type="button"
                               onClick={() => handleSpeedChange(spd)}
-                              className={`px-2 py-1 rounded-lg transition-all ${
+                              className={`px-2 py-1 rounded-lg cursor-pointer transition-all ${
                                 playbackSpeed === spd
-                                  ? "bg-amber-500 text-white font-bold"
-                                  : "bg-white/5 text-neutral-300"
+                                  ? "bg-amber-500 text-white font-bold shadow-sm"
+                                  : "bg-white/5 text-neutral-300 hover:bg-white/10"
                               }`}
                             >
                               {spd}x
@@ -530,11 +531,12 @@ function ChordDetectorContent() {
                         </Button>
                         {(loopStart !== null || loopEnd !== null) && (
                           <button
+                            type="button"
                             onClick={() => {
                               setLoopStart(null);
                               setLoopEnd(null);
                             }}
-                            className="text-xs text-neutral-400 hover:text-neutral-200"
+                            className="text-xs text-neutral-400 hover:text-neutral-200 cursor-pointer transition-colors"
                           >
                             Clear Loop
                           </button>

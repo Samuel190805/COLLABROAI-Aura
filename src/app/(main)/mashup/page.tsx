@@ -483,13 +483,14 @@ function MashupCreatorContent() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <a
+                  <Button
                     href={completedAsset.filePath}
                     download
-                    className="px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:bg-rose-700"
+                    size="sm"
+                    className="px-4 py-2 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm"
                   >
                     <Download className="w-3.5 h-3.5" /> Download Master
-                  </a>
+                  </Button>
                   <Button variant="glass" size="sm" onClick={reset} className="text-xs">
                     <RotateCcw className="w-3.5 h-3.5 mr-1" /> Create Another
                   </Button>
