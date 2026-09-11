@@ -57,11 +57,11 @@ export async function GET(
       }
     }
 
-    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    if (!fs.existsSync(/*turbopackIgnore: true*/ filePath) || !fs.statSync(/*turbopackIgnore: true*/ filePath).isFile()) {
       return NextResponse.json({ error: "Asset binary file missing from storage" }, { status: 404 });
     }
 
-    const stat = await fs.promises.stat(filePath);
+    const stat = await fs.promises.stat(/*turbopackIgnore: true*/ filePath);
     const fileSize = stat.size;
     const range = req.headers.get("range");
 
@@ -84,7 +84,7 @@ export async function GET(
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
       const chunkSize = end - start + 1;
 
-      const fileStream = fs.createReadStream(filePath, { start, end });
+      const fileStream = fs.createReadStream(/*turbopackIgnore: true*/ filePath, { start, end });
       const stream = new ReadableStream({
         start(controller) {
           fileStream.on("data", (chunk) => controller.enqueue(chunk));
@@ -104,7 +104,7 @@ export async function GET(
         },
       });
     } else {
-      const fileStream = fs.createReadStream(filePath);
+      const fileStream = fs.createReadStream(/*turbopackIgnore: true*/ filePath);
       const stream = new ReadableStream({
         start(controller) {
           fileStream.on("data", (chunk) => controller.enqueue(chunk));

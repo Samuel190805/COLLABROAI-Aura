@@ -58,6 +58,7 @@ export function useMicRecorder(options: UseMicRecorderOptions = {}): UseMicRecor
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const mimeTypeRef = useRef<string>("audio/webm");
+  const stopRecordingRef = useRef<() => Promise<Blob | null>>(() => Promise.resolve(null));
 
   // Determine best supported audio MIME type across Chrome, Firefox, Safari, Edge
   const getSupportedMimeType = (): string => {
@@ -248,7 +249,7 @@ export function useMicRecorder(options: UseMicRecorderOptions = {}): UseMicRecor
       durationTimerRef.current = setInterval(() => {
         setRecordingDuration((prev) => {
           if (prev + 1 >= maxDurationSeconds) {
-            stopRecording();
+            stopRecordingRef.current();
             return maxDurationSeconds;
           }
           return prev + 1;
@@ -346,6 +347,8 @@ export function useMicRecorder(options: UseMicRecorderOptions = {}): UseMicRecor
       }
     });
   }, [audioBlob, onStop, recordingDuration, stopVolumeAnalysis]);
+
+  stopRecordingRef.current = stopRecording;
 
   const pauseRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {

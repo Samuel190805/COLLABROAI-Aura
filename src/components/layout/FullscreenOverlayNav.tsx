@@ -120,7 +120,7 @@ export const FullscreenOverlayNav: React.FC<FullscreenOverlayNavProps> = ({
   // Close on route change
   useEffect(() => {
     onClose();
-  }, [pathname]);
+  }, [pathname, onClose]);
 
   return (
     <AnimatePresence>

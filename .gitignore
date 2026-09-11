@@ -1,9 +1,9 @@
 node_modules/
 .next/
-tmp/
-storage/
-public/media/
-models/
+/tmp/
+/storage/
+/public/media/
+/models/
 *.db
 *.db-journal
 .env

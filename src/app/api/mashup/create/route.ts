@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
       if (fileA) {
         const bufferA = Buffer.from(await fileA.arrayBuffer());
-        const pathA = path.join(workDir, fileA.name || "trackA.mp3");
+        const pathA = path.join(/*turbopackIgnore: true*/ workDir, fileA.name || "trackA.mp3");
         await fs.writeFile(pathA, bufferA);
         trackA = { type: "file", filePath: pathA, name: fileA.name.replace(/\.[^/.]+$/, "") };
       } else if (urlA) {
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 
       if (fileB) {
         const bufferB = Buffer.from(await fileB.arrayBuffer());
-        const pathB = path.join(workDir, fileB.name || "trackB.mp3");
+        const pathB = path.join(/*turbopackIgnore: true*/ workDir, fileB.name || "trackB.mp3");
         await fs.writeFile(pathB, bufferB);
         trackB = { type: "file", filePath: pathB, name: fileB.name.replace(/\.[^/.]+$/, "") };
       } else if (urlB) {

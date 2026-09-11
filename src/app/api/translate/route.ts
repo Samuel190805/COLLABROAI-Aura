@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       if (file && file.size > 0) {
         inputType = "audio";
         const buffer = Buffer.from(await file.arrayBuffer());
-        inputAudioPath = path.join(workDir, file.name || "input.wav");
+        inputAudioPath = path.join(/*turbopackIgnore: true*/ workDir, file.name || "input.wav");
         await fs.writeFile(inputAudioPath, buffer);
       } else {
         inputType = "text";

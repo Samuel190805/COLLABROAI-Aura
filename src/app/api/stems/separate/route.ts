@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       if (file && file.size > 0) {
         sourceType = "file";
         const buffer = Buffer.from(await file.arrayBuffer());
-        inputFilePath = path.join(workDir, file.name || "input.wav");
+        inputFilePath = path.join(/*turbopackIgnore: true*/ workDir, file.name || "input.wav");
         await fs.writeFile(inputFilePath, buffer);
       } else if (url && url.trim()) {
         sourceType = "url";
