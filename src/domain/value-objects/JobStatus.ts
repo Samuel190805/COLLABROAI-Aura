@@ -10,7 +10,8 @@ export type JobKind =
   | "MEDIA_DOWNLOAD"
   | "TRANSLATE_SPEAK"
   | "CHORD_DETECTION"
-  | "MASHUP_RENDER";
+  | "MASHUP_RENDER"
+  | "MEDIA_CONVERSION";
 
 export type StemSeparationStage =
   | "ANALYSIS"
@@ -30,9 +31,15 @@ export type TranslateSpeakStage =
   | "SYNTHESIZING"
   | "EXPORT";
 
+export type MediaConversionStage =
+  | "RESOLVING"
+  | "TRANSCODING"
+  | "EXPORT";
+
 export type JobStage =
   | StemSeparationStage
   | MediaDownloadStage
   | TranslateSpeakStage
+  | MediaConversionStage
   | "COMPLETED"
   | "FAILED";

@@ -52,6 +52,7 @@ export class MediaTranscoder implements TranscoderPort {
       pitchShiftSemitones = 0,
       tempoStretchRatio = 1.0,
       metadataTags = {},
+      customAudioFilters = [],
     } = options;
 
     await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
@@ -87,6 +88,11 @@ export class MediaTranscoder implements TranscoderPort {
       // EBU R128 LUFS Loudness Normalization (-14 LUFS standard)
       if (normalizeLoudness) {
         audioFilters.push("loudnorm=I=-14:TP=-1.5:LRA=11");
+      }
+
+      // Custom audio filters
+      if (customAudioFilters && customAudioFilters.length > 0) {
+        audioFilters.push(...customAudioFilters);
       }
 
       if (audioFilters.length > 0) {
@@ -290,8 +296,10 @@ export class MediaTranscoder implements TranscoderPort {
         }
 
         const hasValidDuration = duration !== undefined && duration > 0;
+        const isAudioTarget = ["mp3", "wav", "flac", "m4a", "aac", "ogg"].includes(expectedFormat);
+        const hasRequiredAudioStream = !isAudioTarget || !!audioStream;
 
-        if (!isValid || !hasValidDuration) {
+        if (!isValid || !hasValidDuration || !hasRequiredAudioStream) {
           try {
             await fs.promises.unlink(filePath);
           } catch {
@@ -305,7 +313,9 @@ export class MediaTranscoder implements TranscoderPort {
             duration,
             bitrate,
             sizeBytes: stats.size,
-            error: !isValid
+            error: !hasRequiredAudioStream
+              ? `File contains no valid audio stream`
+              : !isValid
               ? `Container/codec '${formatName}/${actualCodec}' does not match requested format '${expectedFormat}'`
               : `File has invalid duration (${duration}s)`,
           });
@@ -323,20 +333,117 @@ export class MediaTranscoder implements TranscoderPort {
     });
   }
 
-  async extractAudioFromVideo(videoPath: string, outputAudioPath: string): Promise<string> {
-    await fs.promises.mkdir(path.dirname(outputAudioPath), { recursive: true });
+  async probeAudio(filePath: string): Promise<{
+    hasAudioStream: boolean;
+    duration: number;
+    codec?: string;
+    sampleRate?: number;
+    channels?: number;
+    bitrate?: number;
+  }> {
+    return new Promise((resolve) => {
+      getFfmpeg().ffprobe(filePath, (err: Error | null, data: any) => {
+        if (err || !data) {
+          resolve({ hasAudioStream: false, duration: 0 });
+          return;
+        }
+        const audioStream = data.streams?.find((s: any) => s.codec_type === "audio");
+        const rawDuration = data.format?.duration ? parseFloat(String(data.format.duration)) : 0;
+        const streamDuration = audioStream?.duration ? parseFloat(String(audioStream.duration)) : 0;
+        const duration = rawDuration > 0 ? rawDuration : streamDuration;
+
+        resolve({
+          hasAudioStream: !!audioStream,
+          duration,
+          codec: audioStream?.codec_name,
+          sampleRate: audioStream?.sample_rate ? parseInt(String(audioStream.sample_rate), 10) : undefined,
+          channels: audioStream?.channels,
+          bitrate: data.format?.bit_rate ? parseInt(String(data.format.bit_rate), 10) : undefined,
+        });
+      });
+    });
+  }
+
+  async renderAudioToVideo(options: import("@/application/ports/TranscoderPort").AudioToVideoOptions): Promise<string> {
+    const {
+      audioPath,
+      outputPath,
+      targetFormat = "mp4",
+      resolution = "720p",
+      visualType = "waveform",
+    } = options;
+
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+
+    const resMap: Record<string, string> = {
+      "1080p": "1920x1080",
+      "720p": "1280x720",
+      "480p": "854x480",
+    };
+    const size = resMap[resolution] || "1280x720";
+
+    const filter = visualType === "spectrum"
+      ? `[0:a]showspectrum=s=${size}:mode=combined:color=intensity:scale=log[v]`
+      : `[0:a]showwaves=s=${size}:mode=line:colors=white:scale=sqrt[v]`;
+
+    let ffmpegBin = "ffmpeg";
+    try {
+      const ffmpegStatic = require("ffmpeg-static");
+      if (ffmpegStatic && fs.existsSync(ffmpegStatic)) ffmpegBin = ffmpegStatic;
+    } catch {}
+
+    const args = [
+      "-y",
+      "-i", audioPath,
+      "-filter_complex", filter,
+      "-map", "[v]",
+      "-map", "0:a",
+    ];
+
+    if (targetFormat === "webm") {
+      args.push("-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "30", "-c:a", "libopus", "-b:a", "192k", "-shortest", outputPath);
+    } else {
+      args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-shortest", outputPath);
+    }
 
     return new Promise((resolve, reject) => {
-      getFfmpeg()(videoPath)
-        .noVideo()
-        .format("wav")
-        .audioCodec("pcm_s16le")
-        .audioChannels(2)
-        .audioFrequency(44100)
-        .output(outputAudioPath)
-        .on("end", () => resolve(outputAudioPath))
-        .on("error", (err: Error) => reject(new Error(`Failed to extract audio: ${err.message}`)))
-        .run();
+      const { spawn } = require("child_process");
+      const proc = spawn(ffmpegBin, args);
+      let stderr = "";
+
+      proc.stderr.on("data", (d: Buffer) => {
+        stderr += d.toString();
+      });
+
+      proc.on("close", (code: number) => {
+        if (code === 0 && fs.existsSync(outputPath)) {
+          resolve(outputPath);
+        } else {
+          if (fs.existsSync(outputPath)) {
+            try { fs.unlinkSync(outputPath); } catch {}
+          }
+          reject(new Error(`Failed to render audio to video (exit code ${code}): ${stderr.slice(-300)}`));
+        }
+      });
+
+      proc.on("error", (err: Error) => {
+        reject(new Error(`FFmpeg process failed: ${err.message}`));
+      });
+    });
+  }
+
+  async extractAudioFromVideo(
+    videoPath: string,
+    outputAudioPath: string,
+    targetFormat?: MediaFormat
+  ): Promise<string> {
+    await fs.promises.mkdir(path.dirname(outputAudioPath), { recursive: true });
+    const format = targetFormat || (path.extname(outputAudioPath).replace(".", "").toLowerCase() as MediaFormat) || "wav";
+
+    return this.transcode({
+      inputPath: videoPath,
+      outputPath: outputAudioPath,
+      targetFormat: format,
     });
   }
 

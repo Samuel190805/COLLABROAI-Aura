@@ -7,7 +7,6 @@ import {
   Link2,
   Music,
   Video,
-  Sparkles,
   CheckCircle2,
   AlertCircle,
   RotateCcw,
@@ -15,6 +14,7 @@ import {
   Play,
   Clock,
   User,
+  ExternalLink,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -22,7 +22,6 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Tabs } from "@/components/ui/Tabs";
 import { StageStepper } from "@/components/ui/StageStepper";
-import { ProgressRing } from "@/components/ui/ProgressRing";
 import { LinkMorphHero } from "@/components/visual/LinkMorphHero";
 import { ModeAHero } from "@/components/layout/ModeAHero";
 import { useRealtimeJob } from "@/lib/useRealtimeJob";
@@ -78,7 +77,7 @@ function LinkDownloaderContent() {
 
   const stagesList = [
     { id: "RESOLVING", label: "Resolving", description: "Stream parsing" },
-    { id: "DOWNLOADING", label: "Downloading", description: "Fetching payload" },
+    { id: "DOWNLOADING", label: "Downloading", description: "Payload retrieval" },
     { id: "TRANSCODING", label: "Transcoding", description: "FFmpeg encoding" },
     { id: "EXPORT", label: "Validation", description: "FFprobe verified" },
   ];
@@ -100,7 +99,7 @@ function LinkDownloaderContent() {
       }
       setPreviewInfo(data.metadata);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "Failed to preview link");
+      setErrorMsg(err instanceof Error ? err.message : "Failed to inspect link");
     } finally {
       setIsResolving(false);
     }
@@ -109,7 +108,7 @@ function LinkDownloaderContent() {
   const handleStartDownload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!urlInput.trim()) {
-      setErrorMsg("Please enter a valid URL");
+      setErrorMsg("Please enter a media URL");
       return;
     }
 
@@ -130,12 +129,12 @@ function LinkDownloaderContent() {
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Download failed to initiate");
+        throw new Error(data.error || "Download failed to initialize");
       }
 
       watchJob(data.jobId);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "Download initiation failed");
+      setErrorMsg(err instanceof Error ? err.message : "Download failed to initialize");
     } finally {
       setIsSubmitting(false);
     }
@@ -145,76 +144,71 @@ function LinkDownloaderContent() {
 
   return (
     <div className="w-full flex flex-col items-center">
-      {/* =========================================================================
-          MODE A: HERO CHAPTER (Editorial Storytelling)
-          ========================================================================= */}
+      {/* Editorial Chapter Hero */}
       <ModeAHero
         chapterNumber="02 // STREAM EXTRACTION"
-        badge="Zero Loss Codec Transcoder"
+        badge="Direct Stream Archiver"
         headline="Lossless audio and video. Extracted instantly."
         subheadline="Acoustic fingerprinting, -14 LUFS loudness mastering, and verified container integrity."
         description="Extract streams from YouTube and remote media URLs directly to studio 320 kbps MP3, FLAC, and 1080p MP4 formats with automated ID3 tag extraction and zero storage bloat."
         stats={[
-          { label: "Audio Transcode", value: "320 kbps" },
-          { label: "Lossless Option", value: "FLAC" },
-          { label: "Max Resolution", value: "1080p HD" },
-          { label: "Target Loudness", value: "-14 LUFS" },
+          { label: "Audio Bitrate", value: "320 kbps" },
+          { label: "Lossless Codec", value: "FLAC" },
+          { label: "Video Container", value: "1080p MP4" },
+          { label: "Loudness", value: "-14 LUFS" },
         ]}
         visualComponent={<LinkMorphHero />}
         toolAnchorId="download-workspace"
-        toolCtaText="Open Downloader Studio"
+        toolCtaText="Open Downloader"
         align="right"
       />
 
-      {/* =========================================================================
-          SEAM & MODE B: CALM PRECISION STUDIO WORKSPACE
-          ========================================================================= */}
+      {/* Monolith Precision Studio Workspace */}
       <div
         id="download-workspace"
-        className="w-full border-t border-white/10 bg-[#080809] py-16 px-4 sm:px-6 mode-b-precision"
+        className="w-full border-t border-[var(--line)] bg-[var(--bg-primary)] py-12 px-4 sm:px-6"
       >
         <div className="max-w-4xl mx-auto flex flex-col items-center gap-8">
-          {/* Workspace Title Header */}
-          <div className="w-full flex items-center justify-between pb-4 border-b border-white/10">
+          {/* Section Header */}
+          <div className="w-full flex items-center justify-between pb-4 border-b border-[var(--line)]">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-sm">
-                <Download className="w-4 h-4" />
+              <div className="w-6 h-6 border border-[var(--line)] flex items-center justify-center text-[var(--ink-primary)]">
+                <Download className="w-3.5 h-3.5 stroke-[1.5]" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white tracking-tight">
+                <h2 className="text-sm font-mono font-bold tracking-tight uppercase text-[var(--ink-primary)]">
                   Universal Downloader Workspace
                 </h2>
-                <p className="text-xs text-neutral-400 font-mono">
+                <p className="text-[11px] font-mono text-[var(--ink-secondary)]">
                   FFmpeg / FFprobe Verified Pipeline • EBU R128 Dual-Pass Normalization
                 </p>
               </div>
             </div>
 
-            <span className="text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 border border-[var(--line)] text-[var(--ink-secondary)]">
               {mediaType.toUpperCase()} MODE
             </span>
           </div>
 
           {/* Main Action Input Card */}
           {!isProcessing && !isCompleted && (
-            <Card variant="glass" className="w-full p-6 sm:p-8 shadow-apple dark:shadow-apple-dark">
+            <Card className="w-full p-6">
               <form onSubmit={handleStartDownload} className="flex flex-col gap-6">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2.5">
                   <div className="flex-1">
                     <Input
                       label="Media or YouTube URL"
                       placeholder="https://www.youtube.com/watch?v=..."
                       value={urlInput}
                       onChange={(e) => setUrlInput(e.target.value)}
-                      leftIcon={<Link2 className="w-4 h-4 text-apple-blue" />}
                     />
                   </div>
                   <Button
                     type="button"
-                    variant="glass"
+                    variant="secondary"
                     onClick={() => resolveUrl(urlInput)}
                     isLoading={isResolving}
-                    className="h-10 text-xs shrink-0"
+                    className="h-9 text-xs shrink-0 font-mono"
                   >
                     Inspect Link
                   </Button>
@@ -222,31 +216,31 @@ function LinkDownloaderContent() {
 
                 {/* Media Metadata Preview Card */}
                 {previewInfo && (
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 animate-in fade-in">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 border border-[var(--line)] bg-[var(--bg-secondary)]">
                     {previewInfo.thumbnailUrl ? (
-                      <div className="relative w-24 h-16 rounded-xl overflow-hidden shrink-0 bg-neutral-900 border border-white/10">
+                      <div className="relative w-24 h-16 shrink-0 bg-[var(--bg-primary)] border border-[var(--line)] overflow-hidden">
                         <img
                           src={previewInfo.thumbnailUrl}
                           alt={previewInfo.title}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover grayscale"
                         />
                       </div>
                     ) : (
-                      <div className="w-16 h-16 rounded-xl bg-apple-blue/10 text-apple-blue flex items-center justify-center shrink-0">
-                        <Music className="w-6 h-6" />
+                      <div className="w-16 h-16 border border-[var(--line)] text-[var(--ink-primary)] flex items-center justify-center shrink-0">
+                        <Music className="w-6 h-6 stroke-[1.5]" />
                       </div>
                     )}
 
                     <div className="min-w-0 flex-1">
-                      <h4 className="text-sm font-bold text-white truncate">
+                      <h4 className="text-sm font-mono font-bold text-[var(--ink-primary)] truncate">
                         {previewInfo.title}
                       </h4>
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-400 mt-1 font-mono">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--ink-secondary)] mt-1 font-mono">
                         <span className="flex items-center gap-1">
-                          <User className="w-3 h-3" /> {previewInfo.author || "Creator"}
+                          <User className="w-3 h-3 stroke-[1.5]" /> {previewInfo.author || "Creator"}
                         </span>
                         <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> {formatDuration(previewInfo.durationSeconds)}
+                          <Clock className="w-3 h-3 stroke-[1.5]" /> {formatDuration(previewInfo.durationSeconds)}
                         </span>
                       </div>
                     </div>
@@ -257,8 +251,8 @@ function LinkDownloaderContent() {
                 <div className="flex justify-center pt-2">
                   <Tabs
                     tabs={[
-                      { id: "audio", label: "Extract Audio", icon: <Music className="w-4 h-4" /> },
-                      { id: "video", label: "Download Video", icon: <Video className="w-4 h-4" /> },
+                      { id: "audio", label: "Extract Audio", icon: <Music className="w-3.5 h-3.5 stroke-[1.5]" /> },
+                      { id: "video", label: "Download Video", icon: <Video className="w-3.5 h-3.5 stroke-[1.5]" /> },
                     ]}
                     activeTab={mediaType}
                     onChange={(id) => {
@@ -270,7 +264,7 @@ function LinkDownloaderContent() {
                 </div>
 
                 {/* Transcoding Options */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[var(--line)]">
                   {mediaType === "audio" ? (
                     <>
                       <Select
@@ -282,6 +276,7 @@ function LinkDownloaderContent() {
                           { value: "wav", label: "WAV (Uncompressed PCM)" },
                           { value: "flac", label: "FLAC (Lossless Free Audio)" },
                           { value: "m4a", label: "M4A (Apple AAC)" },
+                          { value: "ogg", label: "OGG (Vorbis Audio)" },
                         ]}
                       />
 
@@ -290,9 +285,9 @@ function LinkDownloaderContent() {
                         value={qualityOrResolution}
                         onChange={(e) => setQualityOrResolution(e.target.value)}
                         options={[
-                          { value: "320k", label: "320 kbps (High Fidelity)" },
-                          { value: "256k", label: "256 kbps (Standard High)" },
-                          { value: "192k", label: "192 kbps (Good)" },
+                          { value: "320k", label: "320 kbps (Studio Fidelity)" },
+                          { value: "256k", label: "256 kbps (High Quality)" },
+                          { value: "192k", label: "192 kbps (Standard)" },
                           { value: "128k", label: "128 kbps (Compact)" },
                         ]}
                       />
@@ -327,8 +322,8 @@ function LinkDownloaderContent() {
                 </div>
 
                 {errorMsg && (
-                  <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-500 font-medium flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
+                  <div className="p-3 border border-[var(--line)] bg-[var(--bg-secondary)] text-xs text-[var(--ink-primary)] font-mono flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 stroke-[1.5]" />
                     <span>{errorMsg}</span>
                   </div>
                 )}
@@ -337,29 +332,37 @@ function LinkDownloaderContent() {
                   type="submit"
                   size="lg"
                   isLoading={isSubmitting}
-                  className="w-full flex items-center justify-center gap-2 mt-2 bg-blue-600 hover:bg-blue-700 text-white shadow-apple"
+                  className="w-full flex items-center justify-center gap-2 font-mono"
                 >
-                  <Download className="w-4 h-4" /> Download & Transcode Stream
+                  <Download className="w-3.5 h-3.5 stroke-[1.5]" /> Download & Transcode Stream
                 </Button>
               </form>
             </Card>
           )}
 
-          {/* Live SSE Real-Time Download Progress */}
+          {/* Processing State */}
           {isProcessing && (
-            <Card variant="glass" className="w-full p-8 text-center flex flex-col items-center gap-6 animate-in fade-in">
-              <div className="flex items-center gap-2 text-blue-400">
-                <Sparkles className="w-5 h-5 animate-spin" />
-                <h3 className="text-lg font-bold text-white">
+            <Card className="w-full p-8 flex flex-col items-center gap-6 text-center">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-[var(--ink-primary)] animate-pulse" />
+                <h3 className="text-xs font-mono font-medium uppercase tracking-wider text-[var(--ink-primary)]">
                   Downloading & Transcoding
                 </h3>
               </div>
 
-              <ProgressRing progress={progress} size={140} strokeWidth={10} color="#0071E3" />
-
-              <p className="text-sm font-medium text-neutral-300 max-w-md">
-                {message || "Downloading stream..."}
-              </p>
+              {/* Monolith Linear Progress */}
+              <div className="w-full max-w-md flex flex-col gap-2">
+                <div className="flex justify-between text-[11px] font-mono text-[var(--ink-secondary)]">
+                  <span>{message || "Downloading stream..."}</span>
+                  <span>{progress}%</span>
+                </div>
+                <div className="w-full h-1 bg-[var(--line)] overflow-hidden">
+                  <div
+                    className="h-full bg-[var(--ink-primary)] transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
 
               <StageStepper
                 stages={stagesList}
@@ -372,49 +375,49 @@ function LinkDownloaderContent() {
 
           {/* Failed State */}
           {isFailed && (
-            <Card variant="glass" className="w-full p-8 text-center flex flex-col items-center gap-4 border-red-500/30">
-              <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center">
-                <AlertCircle className="w-6 h-6" />
+            <Card className="w-full p-8 flex flex-col items-center gap-4 text-center">
+              <div className="w-10 h-10 border border-[var(--line)] flex items-center justify-center text-[var(--ink-primary)]">
+                <AlertCircle className="w-5 h-5 stroke-[1.5]" />
               </div>
-              <h3 className="text-lg font-bold text-white">
+              <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-[var(--ink-primary)]">
                 Download Failed
               </h3>
-              <p className="text-sm text-neutral-400 max-w-md">
+              <p className="text-xs text-[var(--ink-secondary)] font-mono max-w-md">
                 {error || "Could not complete media download. Please check the URL and try again."}
               </p>
-              <Button variant="secondary" onClick={reset} className="flex items-center gap-2">
-                <RotateCcw className="w-4 h-4" /> Try Another Link
+              <Button variant="secondary" onClick={reset} className="text-xs font-mono">
+                <RotateCcw className="w-3.5 h-3.5 mr-1 stroke-[1.5]" /> Try Another Link
               </Button>
             </Card>
           )}
 
           {/* Completed State */}
           {isCompleted && downloadedAsset && (
-            <Card variant="glass" className="w-full p-8 flex flex-col gap-6 animate-in fade-in">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span>Transcode Complete & Validated via FFprobe</span>
+            <Card className="w-full p-6 flex flex-col gap-6">
+              <div className="flex items-center justify-between pb-3 border-b border-[var(--line)]">
+                <div className="flex items-center gap-2 text-xs font-mono text-[var(--ink-primary)]">
+                  <CheckCircle2 className="w-4 h-4 stroke-[1.5]" />
+                  <span className="font-semibold uppercase tracking-wider">Transcode Complete & Verified</span>
                 </div>
-                <Button variant="glass" size="sm" onClick={reset} className="text-xs flex items-center gap-1.5">
-                  <RotateCcw className="w-3.5 h-3.5" /> Download Another
+                <Button variant="secondary" size="sm" onClick={reset} className="text-xs font-mono">
+                  <RotateCcw className="w-3 h-3 mr-1 stroke-[1.5]" /> New Link
                 </Button>
               </div>
 
-              <div className="p-6 rounded-2xl bg-white/5 border border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
+              <div className="p-4 border border-[var(--line)] bg-[var(--bg-secondary)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 border border-[var(--line)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--ink-primary)] shrink-0">
                     {downloadedAsset.kind === "DOWNLOAD_VIDEO" ? (
-                      <Video className="w-6 h-6" />
+                      <Video className="w-5 h-5 stroke-[1.5]" />
                     ) : (
-                      <Music className="w-6 h-6" />
+                      <Music className="w-5 h-5 stroke-[1.5]" />
                     )}
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-base font-bold text-white truncate">
+                    <h4 className="text-sm font-mono font-bold text-[var(--ink-primary)] truncate">
                       {downloadedAsset.name}
                     </h4>
-                    <p className="text-xs text-neutral-400 font-mono mt-0.5">
+                    <p className="text-[11px] text-[var(--ink-secondary)] font-mono mt-0.5">
                       Format: {downloadedAsset.format.toUpperCase()} • Codec: {downloadedAsset.codec}
                       {downloadedAsset.sizeBytes ? ` • ${formatBytes(downloadedAsset.sizeBytes)}` : ""}
                       {downloadedAsset.duration ? ` • ${formatDuration(downloadedAsset.duration)}` : ""}
@@ -422,7 +425,7 @@ function LinkDownloaderContent() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end font-mono">
                   {downloadedAsset.kind === "DOWNLOAD_AUDIO" && (
                     <Button
                       variant="secondary"
@@ -435,9 +438,9 @@ function LinkDownloaderContent() {
                           duration: downloadedAsset.duration || 180,
                         })
                       }
-                      className="text-xs flex items-center gap-1.5"
+                      className="text-xs h-8"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current" /> Play Preview
+                      <Play className="w-3 h-3 fill-current mr-1" /> Preview
                     </Button>
                   )}
 
@@ -445,19 +448,66 @@ function LinkDownloaderContent() {
                     href={downloadedAsset.filePath}
                     download={`${downloadedAsset.name}.${downloadedAsset.format}`}
                     size="sm"
-                    className="text-xs flex items-center gap-1.5 bg-apple-blue hover:bg-apple-blueHover text-white shadow-apple"
+                    className="text-xs h-8"
                   >
-                    <Download className="w-3.5 h-3.5" /> Save to Device
+                    <Download className="w-3 h-3 mr-1 stroke-[1.5]" /> Save
                   </Button>
+                </div>
+              </div>
 
-                  <Button
-                    variant="glass"
-                    size="sm"
+              {/* Quick Action Handoffs (Section 4.2.8) */}
+              <div className="pt-2 border-t border-[var(--line)]">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--ink-secondary)] mb-3 block">
+                  Quick Action Handoffs
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
                     onClick={() => router.push(`/stems?url=${encodeURIComponent(urlInput)}`)}
-                    className="text-xs flex items-center gap-1.5"
+                    className="p-3 border border-[var(--line)] bg-[var(--bg-secondary)] hover:border-[var(--ink-primary)] flex items-center justify-between transition-colors text-left font-mono group cursor-pointer"
                   >
-                    <Sliders className="w-3.5 h-3.5 text-indigo-400" /> Separate Stems
-                  </Button>
+                    <div>
+                      <span className="text-xs font-bold block text-[var(--ink-primary)]">
+                        Separate Stems
+                      </span>
+                      <span className="text-[10px] text-[var(--ink-secondary)]">
+                        Extract Vocals & Instrument
+                      </span>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)]" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/mashup?urlA=${encodeURIComponent(urlInput)}`)}
+                    className="p-3 border border-[var(--line)] bg-[var(--bg-secondary)] hover:border-[var(--ink-primary)] flex items-center justify-between transition-colors text-left font-mono group cursor-pointer"
+                  >
+                    <div>
+                      <span className="text-xs font-bold block text-[var(--ink-primary)]">
+                        Send to Mashup
+                      </span>
+                      <span className="text-[10px] text-[var(--ink-secondary)]">
+                        Load into Deck A
+                      </span>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)]" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/chords?url=${encodeURIComponent(urlInput)}`)}
+                    className="p-3 border border-[var(--line)] bg-[var(--bg-secondary)] hover:border-[var(--ink-primary)] flex items-center justify-between transition-colors text-left font-mono group cursor-pointer"
+                  >
+                    <div>
+                      <span className="text-xs font-bold block text-[var(--ink-primary)]">
+                        Detect Chords
+                      </span>
+                      <span className="text-[10px] text-[var(--ink-secondary)]">
+                        Run Harmonic Analysis
+                      </span>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)]" />
+                  </button>
                 </div>
               </div>
             </Card>
@@ -473,7 +523,7 @@ export default function LinkDownloaderPage() {
     <Suspense
       fallback={
         <div className="flex items-center justify-center min-h-[50vh]">
-          <div className="w-8 h-8 rounded-full border-2 border-apple-blue border-t-transparent animate-spin" />
+          <div className="w-5 h-5 border-2 border-[var(--ink-primary)] border-t-transparent animate-spin" />
         </div>
       }
     >

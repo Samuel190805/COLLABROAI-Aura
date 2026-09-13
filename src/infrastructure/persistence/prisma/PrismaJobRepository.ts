@@ -129,16 +129,24 @@ export class PrismaJobRepository implements IJobRepository {
     progress: number,
     message?: string
   ): Promise<void> {
-    await prisma.job.update({
-      where: { id },
-      data: {
-        stage,
-        progress,
-        status: "PROCESSING",
-        message: message ?? undefined,
-        updatedAt: new Date(),
-      },
-    });
+    try {
+      await prisma.job.update({
+        where: { id },
+        data: {
+          stage,
+          progress,
+          status: "PROCESSING",
+          message: message ?? undefined,
+          updatedAt: new Date(),
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === "P2025") {
+        console.warn(`[PrismaJobRepository] Job ${id} not found during updateProgress; skipping.`);
+        return;
+      }
+      throw err;
+    }
   }
 
   async updateStatus(
@@ -148,17 +156,46 @@ export class PrismaJobRepository implements IJobRepository {
     error?: string,
     message?: string
   ): Promise<void> {
-    await prisma.job.update({
-      where: { id },
-      data: {
-        status,
-        stage,
-        error: error ?? null,
-        message: message ?? undefined,
-        completedAt: status === "COMPLETED" ? new Date() : undefined,
-        progress: status === "COMPLETED" ? 100 : undefined,
-        updatedAt: new Date(),
-      },
-    });
+    try {
+      await prisma.job.update({
+        where: { id },
+        data: {
+          status,
+          stage,
+          error: error ?? null,
+          message: message ?? undefined,
+          completedAt: status === "COMPLETED" ? new Date() : undefined,
+          progress: status === "COMPLETED" ? 100 : undefined,
+          updatedAt: new Date(),
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === "P2025") {
+        console.warn(`[PrismaJobRepository] Job ${id} not found during updateStatus; skipping.`);
+        return;
+      }
+      throw err;
+    }
+  }
+
+  async getQueueMetrics(): Promise<{
+    pendingJobs: number;
+    activeJobs: number;
+    completedJobs24h: number;
+    failedJobs24h: number;
+  }> {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [pending, active, completed, failed] = await Promise.all([
+      prisma.job.count({ where: { status: "PENDING" } }),
+      prisma.job.count({ where: { status: "PROCESSING" } }),
+      prisma.job.count({ where: { status: "COMPLETED", updatedAt: { gte: oneDayAgo } } }),
+      prisma.job.count({ where: { status: "FAILED", updatedAt: { gte: oneDayAgo } } }),
+    ]);
+    return {
+      pendingJobs: pending,
+      activeJobs: active,
+      completedJobs24h: completed,
+      failedJobs24h: failed,
+    };
   }
 }

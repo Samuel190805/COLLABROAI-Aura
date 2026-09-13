@@ -1,14 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Languages,
   Mic,
   MicOff,
   UploadCloud,
   Volume2,
-  Sparkles,
-  ArrowRight,
   RotateCcw,
   CheckCircle2,
   AlertCircle,
@@ -16,24 +14,21 @@ import {
   Download,
   Edit3,
   Loader2,
-  FileAudio,
-  Radio,
   Check,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Tabs } from "@/components/ui/Tabs";
+import { MediaPlayer } from "@/components/player/MediaPlayer";
 import { FileDropzone } from "@/components/ui/FileDropzone";
 import { StageStepper } from "@/components/ui/StageStepper";
-import { ProgressRing } from "@/components/ui/ProgressRing";
 import { SpeechBubbleHero } from "@/components/visual/SpeechBubbleHero";
 import { ModeAHero } from "@/components/layout/ModeAHero";
 import { useRealtimeJob } from "@/lib/useRealtimeJob";
 import { useGlobalAudio } from "@/components/audio/GlobalAudioPlayer";
 import { useMicRecorder } from "@/lib/useMicRecorder";
 import { SUPPORTED_LANGUAGES, findLanguageByCode } from "@/domain/value-objects/SupportedLanguages";
-import { formatBytes } from "@/lib/utils";
 
 export default function TranslateSpeakPage() {
   const [inputMode, setInputMode] = useState<"text" | "mic" | "audio">("text");
@@ -57,7 +52,6 @@ export default function TranslateSpeakPage() {
 
   const { playTrack } = useGlobalAudio();
 
-  // Shared Microphone Recorder Hook
   const {
     isRecording,
     permissionStatus,
@@ -96,7 +90,6 @@ export default function TranslateSpeakPage() {
     { id: "EXPORT", label: "Validation", description: "FFprobe verified" },
   ];
 
-  // Auto-translate preview when sourceText or targetLanguage changes
   useEffect(() => {
     if (!sourceText.trim()) {
       setTranslatedText("");
@@ -218,7 +211,7 @@ export default function TranslateSpeakPage() {
     const hasAudio = (inputMode === "audio" && selectedFile) || (inputMode === "mic" && audioBlob);
 
     if (!hasText && !hasAudio) {
-      setErrorMsg("Please enter text, record audio with your microphone, or upload an audio file to translate.");
+      setErrorMsg("Please enter text, record microphone audio, or upload an audio file.");
       return;
     }
 
@@ -227,7 +220,6 @@ export default function TranslateSpeakPage() {
     try {
       let res: Response;
 
-      // When text or transcribed text is present, submit directly as verified text to guarantee input-to-output delivery
       if (sourceText.trim() || translatedText.trim() || inputMode === "text") {
         res = await fetch("/api/translate", {
           method: "POST",
@@ -296,87 +288,123 @@ export default function TranslateSpeakPage() {
   const targetLangInfo = findLanguageByCode(targetLanguage);
   const sourceLangInfo = findLanguageByCode(sourceLanguage);
 
+  const [inlineTranslatedText, setInlineTranslatedText] = useState("");
+
+  useEffect(() => {
+    if (translatedAsset?.metadata?.translatedText) {
+      setInlineTranslatedText(translatedAsset.metadata.translatedText);
+    } else if (translatedText) {
+      setInlineTranslatedText(translatedText);
+    }
+  }, [translatedAsset, translatedText]);
+
+  const handleResynthesizeTTS = async () => {
+    if (!inlineTranslatedText.trim()) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inputType: "text",
+          text: translatedAsset?.metadata?.sourceText || sourceText,
+          translatedText: inlineTranslatedText.trim(),
+          sourceLanguage,
+          targetLanguage,
+          voiceGender,
+          speed: speechSpeed,
+          preserveVoice,
+          enableDiarization,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "TTS re-synthesis failed");
+      }
+      watchJob(data.jobId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "TTS synthesis failed";
+      setErrorMsg(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="w-full flex flex-col items-center">
-      {/* =========================================================================
-          MODE A: HERO CHAPTER (Editorial Storytelling)
-          ========================================================================= */}
+      {/* Editorial Chapter Hero */}
       <ModeAHero
         chapterNumber="03 // SPEECH TRANSLATION"
-        badge="16kHz Conditioned Neural Speech Studio"
+        badge="Neural Speech Studio"
         headline="Speak any language in your own voice."
-        subheadline="Exact word-for-word speech recognition and formant voice preservation across 30+ languages."
+        subheadline="Exact word-for-word speech recognition and voice synthesis across 30+ languages."
         description="Conditioned 16kHz Whisper ASR captures exact spoken intent without truncation, advanced neural MT translates contextually, and formant-preserving synthesis delivers crystal-clear speech."
         stats={[
           { label: "ASR Sampling", value: "16 kHz Mono" },
-          { label: "Target Languages", value: "30+" },
-          { label: "Inference Temp", value: "0.0 (Exact)" },
-          { label: "Voice Cloning", value: "Formant" },
+          { label: "Languages", value: "30+" },
+          { label: "Speech Engine", value: "Neural TTS" },
+          { label: "Voice Output", value: "192 kbps" },
         ]}
         visualComponent={<SpeechBubbleHero />}
         toolAnchorId="translate-workspace"
-        toolCtaText="Launch Translation Studio"
+        toolCtaText="Launch Studio"
       />
 
-      {/* =========================================================================
-          MODE B: CALM PRECISION STUDIO WORKSPACE
-          ========================================================================= */}
+      {/* Monolith Precision Studio Workspace */}
       <div
         id="translate-workspace"
-        className="w-full border-t border-white/10 bg-[#080809] py-16 px-4 sm:px-6 mode-b-precision"
+        className="w-full border-t border-[var(--line)] bg-[var(--bg-primary)] py-12 px-4 sm:px-6"
       >
         <div className="max-w-4xl mx-auto flex flex-col items-center gap-8">
-          {/* Workspace Title Header */}
-          <div className="w-full flex items-center justify-between pb-4 border-b border-white/10">
+          {/* Section Header */}
+          <div className="w-full flex items-center justify-between pb-4 border-b border-[var(--line)]">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm">
-                <Languages className="w-4 h-4" />
+              <div className="w-6 h-6 border border-[var(--line)] flex items-center justify-center text-[var(--ink-primary)]">
+                <Languages className="w-3.5 h-3.5 stroke-[1.5]" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white tracking-tight">
+                <h2 className="text-sm font-mono font-bold tracking-tight uppercase text-[var(--ink-primary)]">
                   Speech-to-Speech Translation Studio
                 </h2>
-                <p className="text-xs text-neutral-400 font-mono">
+                <p className="text-[11px] font-mono text-[var(--ink-secondary)]">
                   16kHz Whisper ASR → Neural MT → Neural Voice Synthesis
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                {targetLangInfo ? `${targetLangInfo.flag} ${targetLangInfo.name.toUpperCase()}` : targetLanguage.toUpperCase()}
-              </span>
-            </div>
+            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 border border-[var(--line)] text-[var(--ink-secondary)]">
+              {targetLangInfo ? `${targetLangInfo.code.toUpperCase()}` : targetLanguage.toUpperCase()}
+            </span>
           </div>
 
           {/* Main Action Form Card */}
           {!isProcessing && !isCompleted && (
-            <Card variant="glass" className="w-full p-6 sm:p-8 shadow-apple dark:shadow-apple-dark">
+            <Card className="w-full p-6">
               <form onSubmit={handleStartFullPipeline} className="flex flex-col gap-6">
                 {/* Input Mode Selector */}
                 <div className="flex justify-center">
                   <Tabs
                     tabs={[
-                      { id: "text", label: "Type Text", icon: <Edit3 className="w-4 h-4" /> },
-                      { id: "mic", label: "Live Microphone", icon: <Mic className="w-4 h-4" /> },
-                      { id: "audio", label: "Upload Audio", icon: <UploadCloud className="w-4 h-4" /> },
+                      { id: "text", label: "Type Text", icon: <Edit3 className="w-3.5 h-3.5 stroke-[1.5]" /> },
+                      { id: "mic", label: "Microphone", icon: <Mic className="w-3.5 h-3.5 stroke-[1.5]" /> },
+                      { id: "audio", label: "Upload Audio", icon: <UploadCloud className="w-3.5 h-3.5 stroke-[1.5]" /> },
                     ]}
                     activeTab={inputMode}
                     onChange={(id) => setInputMode(id as any)}
                   />
                 </div>
 
-                {/* Mode 2: Live Microphone with Shared Recorder & Real-Time VU Meter */}
+                {/* Mode: Microphone */}
                 {inputMode === "mic" && (
-                  <div className="flex flex-col items-center justify-center p-6 sm:p-8 rounded-3xl border border-white/10 bg-white/[0.02] gap-5 text-center">
-                    {/* Permission Denied Alert */}
+                  <div className="flex flex-col items-center justify-center p-6 border border-[var(--line)] bg-[var(--bg-secondary)] gap-4 text-center">
                     {permissionStatus === "denied" && (
-                      <div className="w-full p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 font-medium flex items-center gap-3 text-left">
-                        <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
+                      <div className="w-full p-3 border border-[var(--line)] bg-[var(--bg-primary)] text-xs text-[var(--ink-primary)] flex items-center gap-2 text-left font-mono">
+                        <AlertCircle className="w-4 h-4 shrink-0 stroke-[1.5]" />
                         <div>
-                          <p className="font-bold">Microphone access is blocked</p>
-                          <p className="text-neutral-400 mt-0.5">
-                            Please click the microphone icon in your browser address bar and enable microphone permissions for this site.
+                          <p className="font-bold">Microphone access blocked</p>
+                          <p className="text-[11px] text-[var(--ink-secondary)] mt-0.5">
+                            Enable microphone permissions in your browser address bar.
                           </p>
                         </div>
                       </div>
@@ -387,66 +415,51 @@ export default function TranslateSpeakPage() {
                         type="button"
                         onClick={handleToggleRecord}
                         disabled={isTranscribing}
-                        className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
+                        className={`w-16 h-16 border flex items-center justify-center transition-colors cursor-pointer ${
                           isRecording
-                            ? "bg-red-500 text-white animate-pulse shadow-2xl shadow-red-500/40 ring-4 ring-red-500/30 scale-105"
+                            ? "bg-[var(--ink-primary)] text-[var(--bg-primary)] border-[var(--ink-primary)] animate-pulse"
                             : isTranscribing
-                            ? "bg-neutral-800 text-neutral-400 cursor-not-allowed"
-                            : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-apple hover:scale-105 active:scale-95"
+                            ? "border-[var(--line)] text-[var(--ink-secondary)] cursor-not-allowed"
+                            : "border-[var(--ink-primary)] text-[var(--ink-primary)] hover:bg-[var(--ink-primary)] hover:text-[var(--bg-primary)]"
                         }`}
                       >
                         {isRecording ? (
-                          <MicOff className="w-8 h-8" />
+                          <MicOff className="w-6 h-6 stroke-[1.5]" />
                         ) : isTranscribing ? (
-                          <Loader2 className="w-8 h-8 animate-spin" />
+                          <Loader2 className="w-6 h-6 animate-spin stroke-[1.5]" />
                         ) : (
-                          <Mic className="w-8 h-8" />
+                          <Mic className="w-6 h-6 stroke-[1.5]" />
                         )}
                       </button>
-
-                      {isRecording && (
-                        <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500" />
-                        </span>
-                      )}
                     </div>
 
-                    {/* Live Recording Stats & Signal Meter */}
-                    <div className="w-full max-w-sm flex flex-col items-center gap-2">
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-bold text-white font-mono">
+                    <div className="w-full max-w-sm flex flex-col items-center gap-1.5 font-mono">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="font-bold text-[var(--ink-primary)]">
                           {isRecording ? formattedDuration : "00:00"}
                         </span>
-                        <span className="text-xs text-neutral-400">•</span>
-                        <span className="text-xs text-neutral-300 font-medium">
+                        <span className="text-[var(--ink-secondary)]">•</span>
+                        <span className="text-[var(--ink-secondary)] text-[11px]">
                           {isRecording
-                            ? "Recording voice... Click to Stop & Transcribe"
+                            ? "Recording voice... Click to Stop"
                             : isTranscribing
-                            ? "Conditioning 16kHz audio & transcribing via Whisper..."
+                            ? "Transcribing via Whisper ASR..."
                             : audioBlob
                             ? `Captured audio (${recordingDuration}s) • Ready`
                             : "Click to start recording"}
                         </span>
                       </div>
 
-                      {/* Real-Time Live Signal VU Meter */}
                       {isRecording && (
                         <div className="w-full flex items-center gap-2 mt-1">
-                          <Volume2 className="w-3.5 h-3.5 text-neutral-400" />
-                          <div className="flex-1 h-2 bg-neutral-800 rounded-full overflow-hidden">
+                          <Volume2 className="w-3 h-3 text-[var(--ink-secondary)] stroke-[1.5]" />
+                          <div className="flex-1 h-1 bg-[var(--line)] overflow-hidden">
                             <div
-                              className={`h-full transition-all duration-75 ${
-                                volumeLevel > 0.75
-                                  ? "bg-red-500"
-                                  : volumeLevel > 0.35
-                                  ? "bg-emerald-500"
-                                  : "bg-indigo-500"
-                              }`}
+                              className="h-full bg-[var(--ink-primary)] transition-all duration-75"
                               style={{ width: `${Math.max(4, volumeLevel * 100)}%` }}
                             />
                           </div>
-                          <span className="text-[10px] font-mono text-neutral-400">
+                          <span className="text-[10px] text-[var(--ink-secondary)]">
                             {Math.round(volumeLevel * 100)}%
                           </span>
                         </div>
@@ -455,35 +468,35 @@ export default function TranslateSpeakPage() {
                   </div>
                 )}
 
-                {/* Mode 3: Audio File Upload */}
+                {/* Mode: Audio File Upload */}
                 {inputMode === "audio" && (
                   <div className="flex flex-col gap-3">
                     <FileDropzone
                       selectedFile={selectedFile}
                       onFileSelect={handleFileSelect}
-                      label="Drop voice audio recording here"
-                      sublabel="MP3, WAV, M4A, AAC up to 50MB (Automatically converted to 16kHz mono)"
+                      label="Select or drop voice recording"
+                      sublabel="MP3, WAV, M4A, AAC up to 50MB (Conditioned to 16kHz mono)"
                     />
                     {isTranscribing && (
-                      <div className="flex items-center justify-center gap-2 p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 text-xs font-semibold border border-indigo-500/20">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Conditioning to 16kHz & transcribing via Whisper ASR...</span>
+                      <div className="flex items-center justify-center gap-2 p-3 border border-[var(--line)] bg-[var(--bg-secondary)] text-[var(--ink-primary)] text-xs font-mono">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin stroke-[1.5]" />
+                        <span>Transcribing audio via Whisper ASR...</span>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Language & Voice Options */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/5">
+                {/* Language & Voice Selectors */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[var(--line)]">
                   <Select
-                    label="Source Spoken Language (Hint)"
+                    label="Source Spoken Language"
                     value={sourceLanguage}
                     onChange={(e) => setSourceLanguage(e.target.value)}
                     options={[
-                      { value: "auto", label: "🌐 Auto Detect Language" },
+                      { value: "auto", label: "Auto Detect Language" },
                       ...SUPPORTED_LANGUAGES.map((l) => ({
                         value: l.code,
-                        label: `${l.flag} ${l.name} (${l.nativeName})`,
+                        label: `${l.name} (${l.nativeName})`,
                       })),
                     ]}
                   />
@@ -494,7 +507,7 @@ export default function TranslateSpeakPage() {
                     onChange={(e) => setTargetLanguage(e.target.value)}
                     options={SUPPORTED_LANGUAGES.map((l) => ({
                       value: l.code,
-                      label: `${l.flag} ${l.name} (${l.nativeName})`,
+                      label: `${l.name} (${l.nativeName})`,
                     }))}
                   />
 
@@ -520,23 +533,23 @@ export default function TranslateSpeakPage() {
                   />
                 </div>
 
-                {/* Stage 1 & 2: Bilingual Editable Text Verification Cards */}
+                {/* Bilingual Editable Text Verification Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Left Box: Exact Source Transcript */}
+                  {/* Source Transcript */}
                   <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between ml-1">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
-                        <label className="text-xs font-semibold text-neutral-300">
-                          Source Text / Exact Transcript
+                        <label className="text-xs font-mono text-[var(--ink-secondary)] uppercase tracking-wider">
+                          Source Text / Transcript
                         </label>
                         {transcriptionSuccess && (
-                          <span className="flex items-center gap-0.5 text-[10px] text-emerald-400 font-semibold px-1.5 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                            <Check className="w-3 h-3" /> Transcribed
+                          <span className="flex items-center gap-0.5 text-[10px] font-mono text-[var(--ink-primary)] px-1 border border-[var(--line)]">
+                            <Check className="w-2.5 h-2.5 stroke-[1.5]" /> Transcribed
                           </span>
                         )}
                       </div>
 
-                      <span className="text-[10px] font-mono text-neutral-400">
+                      <span className="text-[10px] font-mono text-[var(--ink-secondary)]">
                         {sourceText.trim() ? `${sourceText.trim().split(/\s+/).length} words` : "0 words"}
                       </span>
                     </div>
@@ -545,20 +558,21 @@ export default function TranslateSpeakPage() {
                       rows={5}
                       value={sourceText}
                       onChange={(e) => setSourceText(e.target.value)}
-                      placeholder="Enter text or record microphone audio to transcribe with exact precision..."
-                      className="w-full rounded-2xl bg-neutral-900/90 border border-white/10 p-4 text-sm text-neutral-100 placeholder-neutral-500 focus:bg-black focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all resize-none"
+                      placeholder="Enter text or record microphone audio to transcribe..."
+                      style={{ fontFamily: "var(--font-mono), 'Noto Sans Tamil', 'Latha', 'Mukta Malar', monospace, sans-serif" }}
+                      className="w-full bg-[var(--bg-secondary)] border border-[var(--line)] p-3 text-xs font-mono text-[var(--ink-primary)] placeholder-[var(--ink-secondary)] focus:outline-none focus:border-[var(--ink-primary)] resize-none"
                     />
                   </div>
 
-                  {/* Right Box: Target Translated Text */}
+                  {/* Target Translated Text */}
                   <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between ml-1">
-                      <label className="text-xs font-semibold text-emerald-400">
-                        Translated Text ({targetLangInfo ? `${targetLangInfo.flag} ${targetLangInfo.name}` : targetLanguage.toUpperCase()})
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-mono text-[var(--ink-secondary)] uppercase tracking-wider">
+                        Translated Text ({targetLangInfo ? targetLangInfo.name : targetLanguage.toUpperCase()})
                       </label>
                       {isTranslatingPreview && (
-                        <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
-                          <Loader2 className="w-3 h-3 animate-spin" /> Translating...
+                        <span className="text-[10px] font-mono text-[var(--ink-secondary)] flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin stroke-[1.5]" /> Translating...
                         </span>
                       )}
                     </div>
@@ -566,74 +580,82 @@ export default function TranslateSpeakPage() {
                       rows={5}
                       value={translatedText}
                       onChange={(e) => setTranslatedText(e.target.value)}
-                      placeholder="Translated text will appear here (freely editable before voice synthesis)..."
-                      className="w-full rounded-2xl bg-emerald-500/5 border border-emerald-500/30 p-4 text-sm font-medium text-neutral-100 placeholder-neutral-500 focus:bg-black focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 focus:outline-none transition-all resize-none"
+                      placeholder="Translated text will appear here (editable before synthesis)..."
+                      style={{ fontFamily: "var(--font-mono), 'Noto Sans Tamil', 'Latha', 'Mukta Malar', monospace, sans-serif" }}
+                      className="w-full bg-[var(--bg-secondary)] border border-[var(--line)] p-3 text-xs font-mono text-[var(--ink-primary)] placeholder-[var(--ink-secondary)] focus:outline-none focus:border-[var(--ink-primary)] resize-none"
                     />
                   </div>
                 </div>
 
-                {/* Voice Preservation & Diarization Options */}
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <label className="flex items-center gap-2.5 cursor-pointer text-xs font-medium text-neutral-300">
+                {/* Voice Preservation & Diarization */}
+                <div className="p-3 border border-[var(--line)] bg-[var(--bg-secondary)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 font-mono text-xs text-[var(--ink-secondary)]">
+                  <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={preserveVoice}
                       onChange={(e) => setPreserveVoice(e.target.checked)}
-                      className="rounded text-emerald-500 focus:ring-emerald-500"
+                      className="rounded-none border-[var(--line)] accent-[var(--ink-primary)]"
                     />
-                    <span>Voice-Preserving Speech (Preserve original timbre & pitch)</span>
+                    <span>Preserve Voice Formants & Pitch</span>
                   </label>
 
-                  <label className="flex items-center gap-2.5 cursor-pointer text-xs font-medium text-neutral-300">
+                  <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={enableDiarization}
                       onChange={(e) => setEnableDiarization(e.target.checked)}
-                      className="rounded text-emerald-500 focus:ring-emerald-500"
+                      className="rounded-none border-[var(--line)] accent-[var(--ink-primary)]"
                     />
-                    <span>Multi-Speaker Diarization (Separate distinct speakers)</span>
+                    <span>Multi-Speaker Diarization</span>
                   </label>
                 </div>
 
-                {/* Error Banner with Stage Specificity */}
+                {/* Error Banner */}
                 {(errorMsg || micError || stageError) && (
-                  <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 font-medium flex items-start gap-3">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                  <div className="p-3 border border-[var(--line)] bg-[var(--bg-secondary)] text-xs text-[var(--ink-primary)] font-mono flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 stroke-[1.5] mt-0.5" />
                     <div>
-                      {stageError && <p className="font-bold text-red-300">[{stageError.stage}]</p>}
+                      {stageError && <p className="font-bold">[{stageError.stage}]</p>}
                       <p>{errorMsg || micError || stageError?.message}</p>
                     </div>
                   </div>
                 )}
 
-                {/* Primary Action Button */}
                 <Button
                   type="submit"
                   size="lg"
                   isLoading={isSubmitting}
-                  className="w-full flex items-center justify-center gap-2 mt-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-apple"
+                  className="w-full flex items-center justify-center gap-2 font-mono"
                 >
-                  <Languages className="w-4 h-4" /> Synthesize Translated Speech
+                  <Languages className="w-3.5 h-3.5 stroke-[1.5]" /> Synthesize Translated Speech
                 </Button>
               </form>
             </Card>
           )}
 
-          {/* Live SSE Real-Time Progress */}
+          {/* Processing State */}
           {isProcessing && (
-            <Card variant="glass" className="w-full p-8 text-center flex flex-col items-center gap-6 animate-in fade-in">
-              <div className="flex items-center gap-2 text-emerald-400">
-                <Sparkles className="w-5 h-5 animate-spin" />
-                <h3 className="text-lg font-bold text-white">
-                  Processing Speech Translation
+            <Card className="w-full p-8 flex flex-col items-center gap-6 text-center">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-[var(--ink-primary)] animate-pulse" />
+                <h3 className="text-xs font-mono font-medium uppercase tracking-wider text-[var(--ink-primary)]">
+                  Speech Translation in Progress
                 </h3>
               </div>
 
-              <ProgressRing progress={progress} size={140} strokeWidth={10} color="#10B981" />
-
-              <p className="text-sm font-medium text-neutral-300 max-w-md">
-                {message || "Translating & synthesizing voice..."}
-              </p>
+              {/* Monolith Linear Progress */}
+              <div className="w-full max-w-md flex flex-col gap-2">
+                <div className="flex justify-between text-[11px] font-mono text-[var(--ink-secondary)]">
+                  <span>{message || "Processing speech..."}</span>
+                  <span>{progress}%</span>
+                </div>
+                <div className="w-full h-1 bg-[var(--line)] overflow-hidden">
+                  <div
+                    className="h-full bg-[var(--ink-primary)] transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
 
               <StageStepper
                 stages={stagesList}
@@ -646,102 +668,96 @@ export default function TranslateSpeakPage() {
 
           {/* Failed State Card */}
           {isFailed && (
-            <Card variant="glass" className="w-full p-8 text-center flex flex-col items-center gap-4 border-red-500/30">
-              <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center">
-                <AlertCircle className="w-6 h-6" />
+            <Card className="w-full p-8 flex flex-col items-center gap-4 text-center">
+              <div className="w-10 h-10 border border-[var(--line)] flex items-center justify-center text-[var(--ink-primary)]">
+                <AlertCircle className="w-5 h-5 stroke-[1.5]" />
               </div>
-              <h3 className="text-lg font-bold text-white">
-                Translation Pipeline Failed
+              <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-[var(--ink-primary)]">
+                Translation Failed
               </h3>
-              <p className="text-sm text-neutral-400 max-w-md">
-                {error || "An error occurred during speech translation. Please verify input audio or text and try again."}
+              <p className="text-xs text-[var(--ink-secondary)] font-mono max-w-md">
+                {error || "An error occurred during speech translation. Please verify input and try again."}
               </p>
-              <Button variant="secondary" onClick={resetAll} className="flex items-center gap-2">
-                <RotateCcw className="w-4 h-4" /> Try Again
+              <Button variant="secondary" onClick={resetAll} className="text-xs font-mono">
+                <RotateCcw className="w-3.5 h-3.5 mr-1 stroke-[1.5]" /> Try Again
               </Button>
             </Card>
           )}
 
-          {/* Completed State: Audio Player & Bilingual Cards */}
+          {/* Completed State */}
           {isCompleted && translatedAsset && (
-            <div className="w-full flex flex-col gap-6 animate-in fade-in">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span>Voice Synthesized & Validated via FFprobe</span>
+            <div className="w-full flex flex-col gap-6">
+              <div className="flex items-center justify-between pb-3 border-b border-[var(--line)]">
+                <div className="flex items-center gap-2 text-xs font-mono text-[var(--ink-primary)]">
+                  <CheckCircle2 className="w-4 h-4 stroke-[1.5]" />
+                  <span className="font-semibold uppercase tracking-wider">Synthesized & Validated</span>
                 </div>
-                <Button variant="glass" size="sm" onClick={resetAll} className="text-xs flex items-center gap-1.5">
-                  <RotateCcw className="w-3.5 h-3.5" /> Translate Another
+                <Button variant="secondary" size="sm" onClick={resetAll} className="text-xs font-mono">
+                  <RotateCcw className="w-3 h-3 mr-1 stroke-[1.5]" /> New Translation
                 </Button>
               </div>
 
-              {/* Bilingual Comparison Cards */}
+              {/* Bilingual Comparison & Inline Editing */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card variant="glass" className="p-6">
-                  <div className="flex items-center justify-between mb-3 text-xs font-semibold text-neutral-400 uppercase tracking-wider font-mono">
-                    <span>Source Input Text</span>
-                    <span className="text-neutral-400">{sourceLangInfo?.name || "Source"}</span>
+                <Card className="p-4 flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[var(--ink-secondary)]">
+                    <span>Source Transcript</span>
+                    <span>{sourceLangInfo?.name || "Original"}</span>
                   </div>
-                  <p className="text-sm text-neutral-200 leading-relaxed font-medium">
+                  <p
+                    style={{ fontFamily: "var(--font-mono), 'Noto Sans Tamil', 'Latha', 'Mukta Malar', monospace, sans-serif" }}
+                    className="text-xs font-mono text-[var(--ink-primary)] leading-relaxed"
+                  >
                     {translatedAsset.metadata?.sourceText || sourceText}
                   </p>
                 </Card>
 
-                <Card variant="glass" className="p-6 border-emerald-500/30 bg-emerald-500/5">
-                  <div className="flex items-center justify-between mb-3 text-xs font-semibold text-emerald-400 uppercase tracking-wider font-mono">
-                    <span>Synthesized Translation</span>
-                    <span>{targetLangInfo ? `${targetLangInfo.flag} ${targetLangInfo.name}` : targetLanguage.toUpperCase()}</span>
+                <Card className="p-4 flex flex-col gap-2 bg-[var(--bg-secondary)]">
+                  <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[var(--ink-secondary)]">
+                    <span>Synthesized Translation (Editable)</span>
+                    <span>{targetLangInfo ? targetLangInfo.name : targetLanguage.toUpperCase()}</span>
                   </div>
-                  <p className="text-base text-white font-semibold leading-relaxed">
-                    {translatedAsset.metadata?.translatedText || translatedText}
-                  </p>
+                  <textarea
+                    rows={3}
+                    value={inlineTranslatedText}
+                    onChange={(e) => setInlineTranslatedText(e.target.value)}
+                    style={{ fontFamily: "var(--font-mono), 'Noto Sans Tamil', 'Latha', 'Mukta Malar', monospace, sans-serif" }}
+                    className="w-full bg-[var(--bg-primary)] border border-[var(--line)] p-2 text-xs font-mono font-bold text-[var(--ink-primary)] focus:outline-none focus:border-[var(--ink-primary)] resize-none"
+                  />
+                  <div className="flex justify-end pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleResynthesizeTTS}
+                      isLoading={isSubmitting}
+                      className="text-[11px] font-mono h-7"
+                    >
+                      <RotateCcw className="w-3 h-3 mr-1" /> Re-synthesize Audio (TTS Only)
+                    </Button>
+                  </div>
                 </Card>
               </div>
 
-              {/* Audio Output Player Card */}
-              <Card variant="glass" className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
-                    <Volume2 className="w-6 h-6" />
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-base font-bold text-white truncate">
-                      {translatedAsset.name}
-                    </h4>
-                    <p className="text-xs text-neutral-400 font-mono mt-0.5">
-                      Format: MP3 • Validated Bitrate: 192kbps • High-Res Neural Voice
-                    </p>
-                  </div>
-                </div>
+              {/* Unified Media Player Preview */}
+              <div className="space-y-3">
+                <MediaPlayer
+                  src={translatedAsset.filePath}
+                  mediaType="audio"
+                  title={translatedAsset.name}
+                  artist={`Synthesized Speech (${targetLangInfo?.name || targetLanguage.toUpperCase()})`}
+                />
 
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() =>
-                      playTrack({
-                        id: translatedAsset.id,
-                        title: translatedAsset.name,
-                        src: translatedAsset.filePath,
-                        duration: translatedAsset.duration || 5,
-                      })
-                    }
-                    className="text-xs flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" /> Play Voice
-                  </Button>
-
+                <div className="flex justify-end">
                   <Button
                     href={translatedAsset.filePath}
                     download={`translated_${translatedAsset.metadata?.targetLanguage || "speech"}.mp3`}
-                    variant="glass"
                     size="sm"
-                    className="text-xs flex items-center gap-1.5"
+                    className="text-xs h-8 font-mono"
                   >
-                    <Download className="w-3.5 h-3.5" /> Download Audio
+                    <Download className="w-3.5 h-3.5 mr-1 stroke-[1.5]" /> Download Audio File
                   </Button>
                 </div>
-              </Card>
+              </div>
             </div>
           )}
         </div>

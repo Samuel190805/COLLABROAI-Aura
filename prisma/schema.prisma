@@ -84,7 +84,7 @@ model MediaAsset {
   userId       String?
   user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   name         String
-  kind         String   // ORIGINAL | STEM_VOCALS | STEM_DRUMS | STEM_BASS | STEM_OTHER | STEM_INSTRUMENTAL | DOWNLOAD_AUDIO | DOWNLOAD_VIDEO | TRANSLATED_AUDIO | SOURCE_AUDIO
+  kind         String   // ORIGINAL | STEM_VOCALS | STEM_INSTRUMENT | DOWNLOAD_AUDIO | DOWNLOAD_VIDEO | TRANSLATED_AUDIO | MASHUP
   filePath     String
   mimeType     String
   format       String   // mp3 | wav | flac | mp4 | etc.

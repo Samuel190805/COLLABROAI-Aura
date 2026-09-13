@@ -7,34 +7,32 @@ import { Button } from "@/components/ui/Button";
 
 export default function NotFound() {
   return (
-    <div className="min-h-[75vh] flex flex-col items-center justify-center text-center px-4">
-      <div className="relative mb-6">
-        <div className="w-24 h-24 rounded-3xl bg-apple-blue/10 dark:bg-apple-blue/20 border border-apple-blue/30 flex items-center justify-center text-apple-blue backdrop-blur-2xl shadow-apple">
-          <Compass className="w-12 h-12 stroke-[1.5] animate-pulse" />
-        </div>
+    <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 font-mono">
+      <div className="w-16 h-16 border border-[var(--line)] bg-[var(--bg-secondary)] flex items-center justify-center text-[var(--ink-primary)] mb-6">
+        <Compass className="w-8 h-8 stroke-[1.5]" />
       </div>
 
-      <span className="text-xs font-mono font-semibold tracking-widest text-apple-blue uppercase mb-2">
-        Error 404 • Page Not Found
+      <span className="text-xs uppercase tracking-widest text-[var(--ink-secondary)] mb-2">
+        Error 404 • Missing Track
       </span>
 
-      <h1 className="text-3xl sm:text-4xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-3">
-        Lost in Frequency
+      <h1 className="text-2xl sm:text-3xl font-bold uppercase tracking-tight text-[var(--ink-primary)] mb-3">
+        Frequency Not Found
       </h1>
 
-      <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md mb-8">
-        The track, stem, or route you are looking for has been moved, removed, or never existed in the audio matrix.
+      <p className="text-xs text-[var(--ink-secondary)] max-w-md mb-8">
+        The requested pipeline, stem, or route is not available on this server.
       </p>
 
       <div className="flex items-center gap-3">
         <Link href="/">
-          <Button variant="primary" className="flex items-center gap-2 shadow-apple">
-            <Home className="w-4 h-4" /> Back to Dashboard
+          <Button variant="primary" className="flex items-center gap-2 text-xs">
+            <Home className="w-3.5 h-3.5 stroke-[1.5]" /> Home
           </Button>
         </Link>
         <Link href="/stems">
-          <Button variant="glass" className="flex items-center gap-2">
-            <ArrowLeft className="w-4 h-4" /> Go to Stem Studio
+          <Button variant="secondary" className="flex items-center gap-2 text-xs">
+            <ArrowLeft className="w-3.5 h-3.5 stroke-[1.5]" /> Vocal / Instrument Splitter
           </Button>
         </Link>
       </div>

@@ -6,13 +6,14 @@ import { cn } from "@/lib/utils";
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "glass" | "ghost" | "destructive" | "outline";
+  variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive";
   size?: "sm" | "md" | "lg" | "icon";
   isLoading?: boolean;
   href?: string;
   download?: boolean | string;
   target?: string;
   rel?: string;
+  pill?: boolean;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -28,40 +29,37 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       download,
       target,
       rel,
+      pill = true,
       type = "button",
       ...props
     },
     ref
   ) => {
-    const baseStyles =
-      "inline-flex items-center justify-center font-medium rounded-full transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:active:scale-100 select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-apple-blue/50 cursor-pointer";
+    const baseStyles = cn(
+      "inline-flex items-center justify-center font-medium transition-colors duration-150 select-none cursor-pointer disabled:opacity-40 disabled:pointer-events-none border text-xs tracking-tight",
+      pill ? "rounded-full" : "rounded-sm"
+    );
 
     const variants = {
-      primary:
-        "bg-apple-blue text-white hover:bg-apple-blueHover shadow-sm hover:shadow-apple",
-      secondary:
-        "bg-neutral-100 text-neutral-900 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
-      glass:
-        "backdrop-blur-xl bg-white/70 text-neutral-900 border border-neutral-200/80 hover:bg-white/90 dark:bg-neutral-900/60 dark:text-neutral-100 dark:border-white/10 dark:hover:bg-neutral-900/80 shadow-apple",
-      outline:
-        "border border-neutral-300 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800",
-      ghost:
-        "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-      destructive:
-        "bg-red-500 text-white hover:bg-red-600 shadow-sm",
+      // Monolith Inversion: black on white (dark: white on black)
+      primary: "bg-mono-ink text-mono-bg border-mono-ink hover:opacity-90 active:scale-[0.99]",
+      secondary: "bg-transparent text-mono-ink border-mono-line hover:bg-mono-bgAlt active:scale-[0.99]",
+      outline: "bg-transparent text-mono-ink border-mono-line hover:border-mono-ink active:scale-[0.99]",
+      ghost: "bg-transparent text-mono-inkMuted hover:text-mono-ink border-transparent hover:bg-mono-bgAlt",
+      destructive: "bg-transparent text-mono-ink border-mono-line hover:border-mono-ink",
     };
 
     const sizes = {
-      sm: "text-xs px-3 py-1.5 h-8 gap-1.5",
-      md: "text-sm px-5 py-2.5 h-10 gap-2",
-      lg: "text-base px-7 py-3 h-12 gap-2.5 font-semibold",
-      icon: "h-10 w-10 p-0 rounded-full",
+      sm: "h-8 px-3.5 gap-1.5 text-xs",
+      md: "h-9 px-5 gap-2 text-xs",
+      lg: "h-11 px-7 gap-2.5 text-sm",
+      icon: "h-9 w-9 p-0",
     };
 
     const content = isLoading ? (
       <div className="flex items-center gap-2">
         <svg
-          className="animate-spin h-4 w-4 text-current"
+          className="animate-spin h-3.5 w-3.5 text-current"
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"
@@ -72,7 +70,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             cy="12"
             r="10"
             stroke="currentColor"
-            strokeWidth="4"
+            strokeWidth="3"
           ></circle>
           <path
             className="opacity-75"
@@ -86,25 +84,24 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       children
     );
 
+    const classes = cn(baseStyles, variants[variant], sizes[size], className);
+
     if (href) {
       const isInternal = href.startsWith("/") && !download;
-      const combinedClasses = cn(baseStyles, variants[variant], sizes[size], className);
-
       if (isInternal) {
         return (
-          <Link href={href} className={combinedClasses} target={target} rel={rel}>
+          <Link href={href} className={classes} target={target} rel={rel}>
             {content}
           </Link>
         );
       }
-
       return (
         <a
           href={href}
           download={download}
           target={target}
           rel={rel}
-          className={combinedClasses}
+          className={classes}
         >
           {content}
         </a>
@@ -116,7 +113,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         type={type}
         disabled={disabled || isLoading}
-        className={cn(baseStyles, variants[variant], sizes[size], className)}
+        className={classes}
         {...props}
       >
         {content}
@@ -126,5 +123,4 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 );
 
 Button.displayName = "Button";
-
 export default Button;

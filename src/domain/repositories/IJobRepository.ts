@@ -19,4 +19,10 @@ export interface IJobRepository {
     error?: string,
     message?: string
   ): Promise<void>;
+  getQueueMetrics(): Promise<{
+    pendingJobs: number;
+    activeJobs: number;
+    completedJobs24h: number;
+    failedJobs24h: number;
+  }>;
 }

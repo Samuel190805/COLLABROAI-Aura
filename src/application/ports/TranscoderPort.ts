@@ -13,6 +13,16 @@ export interface TranscodeOptions {
   pitchShiftSemitones?: number; // +/- semitones
   tempoStretchRatio?: number; // 0.8 - 1.2x time stretch
   metadataTags?: Record<string, string>; // ID3 metadata tags (title, artist, album, etc.)
+  customAudioFilters?: string[]; // Custom FFmpeg audio filter expressions
+}
+
+export interface AudioProbeResult {
+  hasAudioStream: boolean;
+  duration: number;
+  codec?: string;
+  sampleRate?: number;
+  channels?: number;
+  bitrate?: number;
 }
 
 export interface ValidationResult {
@@ -33,14 +43,24 @@ export interface AudioAnalysisResult {
   durationSeconds: number;
 }
 
+export interface AudioToVideoOptions {
+  audioPath: string;
+  outputPath: string;
+  targetFormat: "mp4" | "webm";
+  resolution?: string;
+  visualType?: "waveform" | "spectrum";
+}
+
 export interface TranscoderPort {
   transcode(options: TranscodeOptions): Promise<string>;
+  renderAudioToVideo(options: AudioToVideoOptions): Promise<string>;
   validateOutput(
     filePath: string,
     expectedFormat: MediaFormat
   ): Promise<ValidationResult>;
+  probeAudio(filePath: string): Promise<AudioProbeResult>;
   extractWaveformData(filePath: string, samples?: number): Promise<number[]>;
-  extractAudioFromVideo(videoPath: string, outputAudioPath: string): Promise<string>;
+  extractAudioFromVideo(videoPath: string, outputAudioPath: string, targetFormat?: MediaFormat): Promise<string>;
   mixAudioTracks(
     inputPaths: string[],
     outputPath: string,

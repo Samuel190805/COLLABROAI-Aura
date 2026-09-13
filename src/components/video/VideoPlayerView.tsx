@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Play,
@@ -10,11 +10,10 @@ import {
   Maximize,
   Minimize,
   Download,
-  Sliders,
-  RotateCcw,
+  Scissors,
+  Music,
   PictureInPicture2,
-  Sparkles,
-  Layers,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Slider } from "@/components/ui/Slider";
@@ -23,7 +22,7 @@ import { formatDuration } from "@/lib/utils";
 
 export interface VideoPlayerViewProps {
   mode: "local" | "youtube";
-  src?: string; // Blob URL, object URL, or YouTube URL
+  src?: string;
   title?: string;
   className?: string;
 }
@@ -32,7 +31,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   mode,
   src,
   title = "Video Playback",
-  className,
+  className = "",
 }) => {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -46,6 +45,7 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [voiceClarity, setVoiceClarity] = useState(false);
 
   const isYouTube = mode === "youtube" || (src && extractYouTubeId(src) !== null);
 
@@ -99,25 +99,25 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
   };
 
   const handleSendToDownloader = () => {
-    if (src) {
-      router.push(`/download?url=${encodeURIComponent(src)}`);
-    }
+    if (src) router.push(`/download?url=${encodeURIComponent(src)}`);
   };
 
   const handleSendToStems = () => {
-    if (src) {
-      router.push(`/stems?url=${encodeURIComponent(src)}`);
-    }
+    if (src) router.push(`/stems?url=${encodeURIComponent(src)}`);
+  };
+
+  const handleSendToChords = () => {
+    if (src) router.push(`/chords?url=${encodeURIComponent(src)}`);
   };
 
   return (
-    <div className="w-full flex flex-col gap-4">
-      {/* Video Viewport Container */}
+    <div className={`w-full flex flex-col gap-3 font-mono ${className}`}>
+      {/* Video Viewport */}
       <div
         ref={containerRef}
         onMouseEnter={() => setShowControls(true)}
         onMouseLeave={() => isPlaying && setShowControls(false)}
-        className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-neutral-200/80 dark:border-white/10 group"
+        className="relative w-full aspect-video border border-[var(--line)] bg-[var(--bg-primary)] overflow-hidden group"
       >
         {isYouTube && src ? (
           <YouTubeEmbed videoIdOrUrl={src} autoPlay={false} />
@@ -139,9 +139,9 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
               className="w-full h-full object-contain cursor-pointer"
             />
 
-            {/* Overlay Custom Video Controls */}
+            {/* Overlay Controls */}
             <div
-              className={`absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity duration-300 ${
+              className={`absolute inset-x-0 bottom-0 p-3 bg-[var(--bg-primary)]/90 border-t border-[var(--line)] transition-opacity duration-200 ${
                 showControls ? "opacity-100" : "opacity-0 pointer-events-none"
               }`}
             >
@@ -152,20 +152,19 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                   min={0}
                   max={duration || 100}
                   onChange={handleSeek}
-                  accentColor="#0071E3"
                 />
               </div>
 
-              <div className="flex items-center justify-between text-white">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between text-[var(--ink-primary)]">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={togglePlay}
-                    className="p-2 rounded-full hover:bg-white/20 transition-colors"
+                    className="p-1 border border-[var(--line)] hover:border-[var(--ink-primary)] transition-colors cursor-pointer"
                   >
                     {isPlaying ? (
-                      <Pause className="w-5 h-5 fill-current" />
+                      <Pause className="w-3.5 h-3.5 fill-current" />
                     ) : (
-                      <Play className="w-5 h-5 fill-current ml-0.5" />
+                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                     )}
                   </button>
 
@@ -177,16 +176,16 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                         videoRef.current.muted = next;
                       }
                     }}
-                    className="p-2 rounded-full hover:bg-white/20 transition-colors"
+                    className="p-1 border border-[var(--line)] hover:border-[var(--ink-primary)] transition-colors cursor-pointer"
                   >
                     {isMuted || volume === 0 ? (
-                      <VolumeX className="w-5 h-5 text-red-400" />
+                      <VolumeX className="w-3.5 h-3.5" />
                     ) : (
-                      <Volume2 className="w-5 h-5" />
+                      <Volume2 className="w-3.5 h-3.5" />
                     )}
                   </button>
 
-                  <div className="w-20 hidden sm:block">
+                  <div className="w-16 hidden sm:block">
                     <Slider
                       value={isMuted ? 0 : volume * 100}
                       min={0}
@@ -197,47 +196,58 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
                         if (videoRef.current) videoRef.current.volume = val;
                         if (isMuted) setIsMuted(false);
                       }}
-                      accentColor="#FFFFFF"
                     />
                   </div>
 
-                  <span className="text-xs font-mono opacity-80">
+                  <span className="text-[10px] text-[var(--ink-secondary)] ml-1">
                     {formatDuration(currentTime)} / {formatDuration(duration)}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Speed Selector */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setVoiceClarity(!voiceClarity)}
+                    className={`px-1.5 py-0.5 text-[10px] border cursor-pointer transition-colors ${
+                      voiceClarity
+                        ? "bg-[var(--ink-primary)] text-[var(--bg-primary)] border-[var(--ink-primary)]"
+                        : "border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
+                    }`}
+                    title="Voice Presence Boost"
+                  >
+                    <Zap className="w-3 h-3 inline mr-0.5 stroke-[1.5]" /> Clarity
+                  </button>
+
                   <select
                     value={playbackSpeed}
                     onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
-                    className="bg-white/20 text-white rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none cursor-pointer"
+                    className="bg-[var(--bg-secondary)] border border-[var(--line)] text-[var(--ink-primary)] px-1.5 py-0.5 text-[10px] cursor-pointer"
                   >
-                    <option value={0.5} className="text-black">0.5x</option>
-                    <option value={0.75} className="text-black">0.75x</option>
-                    <option value={1.0} className="text-black">1.0x</option>
-                    <option value={1.25} className="text-black">1.25x</option>
-                    <option value={1.5} className="text-black">1.5x</option>
-                    <option value={2.0} className="text-black">2.0x</option>
+                    <option value={0.5}>0.5x</option>
+                    <option value={0.75}>0.75x</option>
+                    <option value={1.0}>1.0x</option>
+                    <option value={1.25}>1.25x</option>
+                    <option value={1.5}>1.5x</option>
+                    <option value={2.0}>2.0x</option>
                   </select>
 
                   <button
                     onClick={togglePiP}
                     title="Picture in Picture"
-                    className="p-2 rounded-full hover:bg-white/20 transition-colors"
+                    className="p-1 border border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer"
                   >
-                    <PictureInPicture2 className="w-4 h-4" />
+                    <PictureInPicture2 className="w-3.5 h-3.5 stroke-[1.5]" />
                   </button>
 
                   <button
                     onClick={toggleFullscreen}
                     title="Fullscreen"
-                    className="p-2 rounded-full hover:bg-white/20 transition-colors"
+                    className="p-1 border border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer"
                   >
                     {isFullscreen ? (
-                      <Minimize className="w-4 h-4" />
+                      <Minimize className="w-3.5 h-3.5 stroke-[1.5]" />
                     ) : (
-                      <Maximize className="w-4 h-4" />
+                      <Maximize className="w-3.5 h-3.5 stroke-[1.5]" />
                     )}
                   </button>
                 </div>
@@ -247,33 +257,41 @@ export const VideoPlayerView: React.FC<VideoPlayerViewProps> = ({
         )}
       </div>
 
-      {/* Quick Action Pills: Send to Downloader & Send to Stem Separator */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-white/70 dark:bg-[#1C1C1E]/70 backdrop-blur-xl border border-neutral-200/80 dark:border-white/10 shadow-sm">
+      {/* Track info and quick action handoffs */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 border border-[var(--line)] bg-[var(--bg-secondary)]">
         <div className="min-w-0">
-          <h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 truncate">
+          <h4 className="text-xs font-bold text-[var(--ink-primary)] truncate">
             {title}
           </h4>
-          <p className="text-xs text-neutral-400">
-            {isYouTube ? "YouTube Stream Source" : "Local-first Video Storage"}
+          <p className="text-[10px] text-[var(--ink-secondary)]">
+            {isYouTube ? "YouTube Stream Source" : "Local Cinema Storage"}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <Button
-            variant="glass"
-            size="sm"
-            onClick={handleSendToDownloader}
-            className="text-xs flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5 text-apple-blue" /> Send to Downloader
-          </Button>
-          <Button
-            variant="glass"
+            variant="secondary"
             size="sm"
             onClick={handleSendToStems}
-            className="text-xs flex items-center gap-1.5"
+            className="text-xs h-7 px-2 font-mono flex items-center gap-1"
           >
-            <Sliders className="w-3.5 h-3.5 text-indigo-500" /> Send to Stem Separator
+            <Scissors className="w-3 h-3 stroke-[1.5]" /> Stems
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSendToChords}
+            className="text-xs h-7 px-2 font-mono flex items-center gap-1"
+          >
+            <Music className="w-3 h-3 stroke-[1.5]" /> Chords
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSendToDownloader}
+            className="text-xs h-7 px-2 font-mono flex items-center gap-1"
+          >
+            <Download className="w-3 h-3 stroke-[1.5]" /> Downloader
           </Button>
         </div>
       </div>

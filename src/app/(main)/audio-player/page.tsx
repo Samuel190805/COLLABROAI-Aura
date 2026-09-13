@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Music,
   FolderPlus,
@@ -14,9 +15,10 @@ import {
   Repeat,
   Shuffle,
   Trash2,
-  Clock,
   HardDrive,
   ListMusic,
+  Scissors,
+  ExternalLink,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -26,6 +28,7 @@ import { localLibrary, LocalMediaItem } from "@/lib/localLibrary";
 import { formatDuration, formatBytes } from "@/lib/utils";
 
 export default function AudioPlayerPage() {
+  const router = useRouter();
   const [items, setItems] = useState<LocalMediaItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -35,6 +38,7 @@ export default function AudioPlayerPage() {
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
+  const [rpm, setRpm] = useState<33 | 45 | 78>(33);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -52,7 +56,6 @@ export default function AudioPlayerPage() {
     }
   }, [currentIndex]);
 
-  // Load items from IndexedDB
   useEffect(() => {
     loadLocalLibrary();
   }, [loadLocalLibrary]);
@@ -62,7 +65,7 @@ export default function AudioPlayerPage() {
 
     for (let i = 0; i < e.target.files.length; i++) {
       const file = e.target.files[i];
-      if (!file.type.includes("audio") && !file.name.match(/\.(mp3|wav|flac|m4a|aac|ogg)$/i)) {
+      if (!file.type.includes("audio") && !file.name.match(/\.(mp3|wav|flac|m4a|aac|ogg|opus|aiff)$/i)) {
         continue;
       }
 
@@ -70,7 +73,7 @@ export default function AudioPlayerPage() {
         id: `audio_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         name: file.name,
         title: file.name.replace(/\.[^/.]+$/, ""),
-        artist: "Local Track",
+        artist: "Local Audio",
         type: "audio",
         format: file.name.split(".").pop() || "mp3",
         size: file.size,
@@ -135,6 +138,15 @@ export default function AudioPlayerPage() {
     }
   };
 
+  const handleRpmChange = (newRpm: 33 | 45 | 78) => {
+    setRpm(newRpm);
+    if (audioRef.current) {
+      // 33 = 1.0x, 45 = 1.36x, 78 = 2.36x
+      const rate = newRpm === 33 ? 1.0 : newRpm === 45 ? 1.36 : 2.0;
+      audioRef.current.playbackRate = rate;
+    }
+  };
+
   const handleDeleteItem = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     await localLibrary.removeItem(id);
@@ -149,20 +161,27 @@ export default function AudioPlayerPage() {
   };
 
   return (
-    <div className="w-full pt-28 pb-20 px-4 sm:px-6 mode-b-precision">
+    <div className="w-full pt-28 pb-20 px-4 sm:px-6 bg-[var(--bg-primary)]">
       <div className="max-w-5xl mx-auto flex flex-col items-center gap-8">
         {/* Title Header */}
-        <div className="text-center max-w-2xl flex flex-col items-center gap-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-widest text-apple-blue bg-apple-blue/10 border border-apple-blue/20">
-            <Music className="w-3.5 h-3.5" />
-            <span>Purely Local Playback</span>
+        <div className="w-full flex items-center justify-between pb-4 border-b border-[var(--line)]">
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6 border border-[var(--line)] flex items-center justify-center text-[var(--ink-primary)]">
+              <Music className="w-3.5 h-3.5 stroke-[1.5]" />
+            </div>
+            <div>
+              <h1 className="text-sm font-mono font-bold tracking-tight uppercase text-[var(--ink-primary)]">
+                Local Audio Player
+              </h1>
+              <p className="text-[11px] font-mono text-[var(--ink-secondary)]">
+                Client-side Web Audio • IndexedDB queue • Turntable view
+              </p>
+            </div>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
-            Local Audio Player
-          </h1>
-          <p className="text-sm text-neutral-400 font-normal">
-            Zero cloud telemetry, instant IndexedDB queue, and real-time frequency visualizer.
-          </p>
+
+          <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 border border-[var(--line)] text-[var(--ink-secondary)]">
+            OFFLINE ENGINE
+          </span>
         </div>
 
         <audio
@@ -186,7 +205,7 @@ export default function AudioPlayerPage() {
           ref={fileInputRef}
           type="file"
           multiple
-          accept="audio/*"
+          accept="audio/*,.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus,.aiff"
           onChange={handleAddFiles}
           className="hidden"
         />
@@ -202,114 +221,148 @@ export default function AudioPlayerPage() {
         />
 
         <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Now Playing Centerpiece Deck */}
-          <div className="lg:col-span-7 flex flex-col gap-6">
-            <Card variant="glass" className="p-8 flex flex-col items-center text-center relative overflow-hidden">
-              {/* Spinning Disc / Cover Art Centerpiece */}
-              <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-full bg-gradient-to-tr from-neutral-900 via-neutral-800 to-neutral-700 shadow-2xl border-4 border-neutral-800 flex items-center justify-center mb-6">
+          {/* Left Column: Turntable Deck & Transport (7 cols) */}
+          <div className="lg:col-span-7 flex flex-col gap-5">
+            <Card className="p-6 flex flex-col items-center text-center relative overflow-hidden">
+              {/* Monolith Turntable Line Art Centerpiece */}
+              <div className="relative w-52 h-52 sm:w-60 sm:h-60 border border-[var(--line)] bg-[var(--bg-secondary)] flex items-center justify-center mb-6">
+                {/* Vinyl record */}
                 <div
-                  className={`w-full h-full rounded-full flex items-center justify-center transition-transform duration-1000 ${
-                    isPlaying ? "animate-[spin_10s_linear_infinite]" : ""
+                  className={`w-44 h-44 sm:w-48 sm:h-48 rounded-full border border-[var(--line)] bg-[var(--bg-primary)] flex items-center justify-center transition-transform ${
+                    isPlaying ? "animate-[spin_4s_linear_infinite]" : ""
                   }`}
+                  style={{
+                    animationDuration: rpm === 33 ? "4s" : rpm === 45 ? "3s" : "1.8s",
+                  }}
                 >
-                  {/* Vinyl Grooves */}
-                  <div className="w-40 h-40 rounded-full border border-neutral-700/40 flex items-center justify-center">
-                    <div className="w-28 h-28 rounded-full border border-neutral-700/30 flex items-center justify-center">
-                      <div className="w-16 h-16 rounded-full bg-apple-blue flex items-center justify-center text-white shadow-inner">
-                        <Music className="w-7 h-7" />
+                  <div className="w-36 h-36 rounded-full border border-[var(--line)] flex items-center justify-center">
+                    <div className="w-24 h-24 rounded-full border border-[var(--line)] flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-full border border-[var(--line)] bg-[var(--bg-secondary)] flex items-center justify-center text-[var(--ink-primary)]">
+                        <Music className="w-5 h-5 stroke-[1.5]" />
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {/* Tonearm line */}
+                <div
+                  className={`absolute top-4 right-4 w-1 bg-[var(--ink-primary)] origin-top transition-transform duration-500 ${
+                    isPlaying ? "h-24 rotate-[25deg]" : "h-20 rotate-0"
+                  }`}
+                />
+              </div>
+
+              {/* RPM Selector */}
+              <div className="flex items-center gap-1 mb-4 font-mono">
+                <span className="text-[10px] uppercase text-[var(--ink-secondary)] mr-1">Speed:</span>
+                {([33, 45, 78] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => handleRpmChange(r)}
+                    className={`px-2 py-0.5 text-[10px] border transition-colors cursor-pointer ${
+                      rpm === r
+                        ? "bg-[var(--ink-primary)] text-[var(--bg-primary)] border-[var(--ink-primary)] font-bold"
+                        : "border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
+                    }`}
+                  >
+                    {r} RPM
+                  </button>
+                ))}
               </div>
 
               {/* Track Info */}
-              <h3 className="text-xl font-bold text-white mb-1 max-w-sm truncate">
+              <h3 className="text-sm font-mono font-bold text-[var(--ink-primary)] mb-0.5 max-w-sm truncate">
                 {currentTrack?.title || "No Track Selected"}
               </h3>
-              <p className="text-xs text-neutral-400 font-medium mb-4">
-                {currentTrack ? `${currentTrack.artist} • ${currentTrack.format.toUpperCase()} (${formatBytes(currentTrack.size)})` : "Add audio files or folders to start"}
+              <p className="text-[10px] text-[var(--ink-secondary)] font-mono mb-4">
+                {currentTrack
+                  ? `${currentTrack.artist} • ${currentTrack.format.toUpperCase()} (${formatBytes(currentTrack.size)})`
+                  : "Add audio files or folders to begin"}
               </p>
 
-              {/* Real-Time Frequency Visualizer Canvas */}
-              <div className="w-full flex justify-center mb-6">
-                <AudioVisualizerCanvas isPlaying={isPlaying} barCount={40} height={36} color="#0071E3" />
+              {/* Visualizer Canvas */}
+              <div className="w-full flex justify-center mb-5">
+                <AudioVisualizerCanvas isPlaying={isPlaying} barCount={32} height={28} />
               </div>
 
               {/* Timeline Scrubber */}
-              <div className="w-full flex flex-col gap-1.5 mb-6">
+              <div className="w-full flex flex-col gap-1 mb-5 font-mono">
                 <Slider
                   value={currentTime}
                   min={0}
                   max={duration || 100}
                   onChange={handleSeek}
-                  accentColor="#0071E3"
                 />
-                <div className="flex items-center justify-between text-xs font-mono text-neutral-400 px-1">
+                <div className="flex items-center justify-between text-[10px] text-[var(--ink-secondary)] px-0.5">
                   <span>{formatDuration(currentTime)}</span>
                   <span>{formatDuration(duration)}</span>
                 </div>
               </div>
 
-              {/* Main Controls */}
-              <div className="flex items-center justify-center gap-4 sm:gap-6 mb-6">
+              {/* Transport Controls */}
+              <div className="flex items-center justify-center gap-4 mb-4">
                 <button
                   type="button"
                   onClick={() => setIsShuffle(!isShuffle)}
-                  className={`p-2 rounded-full transition-colors cursor-pointer ${
-                    isShuffle ? "text-apple-blue bg-apple-blue/10" : "text-neutral-400 hover:text-white"
+                  className={`p-1.5 border transition-colors cursor-pointer ${
+                    isShuffle
+                      ? "bg-[var(--ink-primary)] text-[var(--bg-primary)] border-[var(--ink-primary)]"
+                      : "border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
                   }`}
                   title="Shuffle"
                 >
-                  <Shuffle className="w-5 h-5" />
+                  <Shuffle className="w-4 h-4 stroke-[1.5]" />
                 </button>
 
                 <button
                   type="button"
                   onClick={handlePrev}
-                  className="p-2.5 rounded-full text-neutral-300 hover:bg-neutral-800 transition-colors cursor-pointer active:scale-95"
-                  title="Previous Track"
+                  className="p-1.5 border border-[var(--line)] text-[var(--ink-primary)] hover:border-[var(--ink-primary)] transition-colors cursor-pointer"
+                  title="Previous"
                 >
-                  <SkipBack className="w-5 h-5" />
+                  <SkipBack className="w-4 h-4 stroke-[1.5]" />
                 </button>
 
                 <button
                   type="button"
                   onClick={togglePlay}
                   disabled={!currentTrack}
-                  className="w-14 h-14 rounded-full bg-apple-blue text-white flex items-center justify-center shadow-lg shadow-apple-blue/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  className="w-10 h-10 border border-[var(--ink-primary)] bg-[var(--ink-primary)] text-[var(--bg-primary)] flex items-center justify-center hover:opacity-90 transition-all disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                   title={isPlaying ? "Pause" : "Play"}
                 >
                   {isPlaying ? (
-                    <Pause className="w-6 h-6 fill-current" />
+                    <Pause className="w-4 h-4 fill-current" />
                   ) : (
-                    <Play className="w-6 h-6 fill-current ml-0.5" />
+                    <Play className="w-4 h-4 fill-current ml-0.5" />
                   )}
                 </button>
 
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="p-2.5 rounded-full text-neutral-300 hover:bg-neutral-800 transition-colors cursor-pointer active:scale-95"
-                  title="Next Track"
+                  className="p-1.5 border border-[var(--line)] text-[var(--ink-primary)] hover:border-[var(--ink-primary)] transition-colors cursor-pointer"
+                  title="Next"
                 >
-                  <SkipForward className="w-5 h-5" />
+                  <SkipForward className="w-4 h-4 stroke-[1.5]" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setIsLooping(!isLooping)}
-                  className={`p-2 rounded-full transition-colors cursor-pointer ${
-                    isLooping ? "text-apple-blue bg-apple-blue/10" : "text-neutral-400 hover:text-white"
+                  className={`p-1.5 border transition-colors cursor-pointer ${
+                    isLooping
+                      ? "bg-[var(--ink-primary)] text-[var(--bg-primary)] border-[var(--ink-primary)]"
+                      : "border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
                   }`}
                   title="Loop"
                 >
-                  <Repeat className="w-5 h-5" />
+                  <Repeat className="w-4 h-4 stroke-[1.5]" />
                 </button>
               </div>
 
               {/* Volume Slider */}
-              <div className="flex items-center gap-3 w-48">
+              <div className="flex items-center gap-2 w-44">
                 <button
                   type="button"
                   onClick={() => {
@@ -319,10 +372,13 @@ export default function AudioPlayerPage() {
                       audioRef.current.muted = next;
                     }
                   }}
-                  className="text-neutral-400 hover:text-white cursor-pointer"
-                  title={isMuted ? "Unmute" : "Mute"}
+                  className="text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer"
                 >
-                  {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-red-500" /> : <Volume2 className="w-4 h-4" />}
+                  {isMuted || volume === 0 ? (
+                    <VolumeX className="w-3.5 h-3.5 stroke-[1.5]" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5 stroke-[1.5]" />
+                  )}
                 </button>
                 <Slider
                   value={isMuted ? 0 : volume * 100}
@@ -336,105 +392,110 @@ export default function AudioPlayerPage() {
                   }}
                 />
               </div>
+
+              {/* Quick Actions (Section 4.6.8) */}
+              {currentTrack && (
+                <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[var(--line)] w-full justify-center">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => router.push(`/stems?url=${encodeURIComponent(currentTrack?.url || "")}`)}
+                    className="text-xs h-7 font-mono flex items-center gap-1"
+                  >
+                    <Scissors className="w-3 h-3 stroke-[1.5]" /> Split Stems
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => router.push(`/chords?url=${encodeURIComponent(currentTrack?.url || "")}`)}
+                    className="text-xs h-7 font-mono flex items-center gap-1"
+                  >
+                    <Music className="w-3 h-3 stroke-[1.5]" /> Chords
+                  </Button>
+                </div>
+              )}
             </Card>
           </div>
 
-          {/* Right Column: Local Library Playlist Queue */}
+          {/* Right Column: Playlist Queue (5 cols) */}
           <div className="lg:col-span-5 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ListMusic className="w-4 h-4 text-apple-blue" />
-                <h4 className="text-sm font-bold text-white">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--line)]">
+              <div className="flex items-center gap-2 font-mono">
+                <ListMusic className="w-3.5 h-3.5 stroke-[1.5] text-[var(--ink-primary)]" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-primary)]">
                   Local Queue ({items.length})
                 </h4>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 font-mono">
                 <Button
-                  variant="glass"
+                  variant="secondary"
                   size="sm"
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-xs flex items-center gap-1"
+                  className="text-xs h-6 px-2"
                 >
-                  <FilePlus className="w-3.5 h-3.5" /> Files
+                  <FilePlus className="w-3 h-3 mr-1 stroke-[1.5]" /> File
                 </Button>
                 <Button
-                  variant="glass"
+                  variant="secondary"
                   size="sm"
                   onClick={() => folderInputRef.current?.click()}
-                  className="text-xs flex items-center gap-1"
+                  className="text-xs h-6 px-2"
                 >
-                  <FolderPlus className="w-3.5 h-3.5" /> Folder
+                  <FolderPlus className="w-3 h-3 mr-1 stroke-[1.5]" /> Folder
                 </Button>
                 {items.length > 0 && (
                   <button
                     onClick={handleClearAll}
-                    className="p-1.5 rounded-lg text-neutral-400 hover:text-red-500 transition-colors"
-                    title="Clear Queue"
+                    className="p-1 border border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer ml-1"
+                    title="Clear"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3 h-3 stroke-[1.5]" />
                   </button>
                 )}
               </div>
             </div>
 
             {items.length === 0 ? (
-              <Card variant="glass" className="p-8 text-center flex flex-col items-center justify-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-neutral-800 text-neutral-400 flex items-center justify-center">
-                  <HardDrive className="w-6 h-6" />
+              <Card className="p-8 text-center flex flex-col items-center justify-center gap-3">
+                <div className="w-10 h-10 border border-[var(--line)] text-[var(--ink-secondary)] flex items-center justify-center">
+                  <HardDrive className="w-5 h-5 stroke-[1.5]" />
                 </div>
-                <p className="text-xs font-semibold text-neutral-300">
-                  No local audio files in library
+                <p className="text-xs font-mono font-medium text-[var(--ink-primary)]">
+                  Library is empty
                 </p>
-                <p className="text-[11px] text-neutral-400 max-w-xs">
-                  Pick individual audio files or an entire folder from your device. Files stay stored locally in your browser.
+                <p className="text-[10px] text-[var(--ink-secondary)] font-mono max-w-xs">
+                  Select audio files or folders. Tracks persist locally in IndexedDB.
                 </p>
                 <Button
                   variant="primary"
                   size="sm"
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-xs flex items-center gap-1.5 mt-2 bg-apple-blue hover:bg-apple-blueHover text-white"
+                  className="text-xs font-mono mt-1"
                 >
-                  <FilePlus className="w-3.5 h-3.5" /> Choose Local Audio
+                  <FilePlus className="w-3 h-3 mr-1 stroke-[1.5]" /> Add Local Audio
                 </Button>
               </Card>
             ) : (
-              <div className="flex flex-col gap-2 max-h-[520px] overflow-y-auto pr-1">
+              <div className="flex flex-col gap-1.5 max-h-[500px] overflow-y-auto pr-1">
                 {items.map((item, idx) => {
-                  const isItemPlaying = idx === currentIndex && isPlaying;
                   const isSelected = idx === currentIndex;
 
                   return (
                     <div
                       key={item.id}
                       onClick={() => playIndex(idx)}
-                      className={`group flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-200 ${
+                      className={`flex items-center justify-between p-2.5 border cursor-pointer transition-colors font-mono ${
                         isSelected
-                          ? "bg-apple-blue/15 border-apple-blue/30 shadow-sm"
-                          : "bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/[0.08]"
+                          ? "bg-[var(--ink-primary)] text-[var(--bg-primary)] border-[var(--ink-primary)]"
+                          : "bg-[var(--bg-secondary)] border-[var(--line)] text-[var(--ink-primary)] hover:border-[var(--ink-primary)]"
                       }`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div
-                          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                            isSelected ? "bg-apple-blue text-white shadow-sm shadow-apple-blue/40" : "bg-neutral-800 text-neutral-400 group-hover:text-white"
-                          }`}
-                        >
-                          {isItemPlaying ? (
-                            <Volume2 className="w-4 h-4 animate-pulse" />
-                          ) : (
-                            <Music className="w-4 h-4" />
-                          )}
-                        </div>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-[10px] opacity-60 w-4">{idx + 1}</span>
                         <div className="min-w-0">
-                          <h5
-                            className={`text-xs font-semibold truncate ${
-                              isSelected ? "text-apple-blue font-bold" : "text-neutral-200 group-hover:text-white"
-                            }`}
-                          >
-                            {item.title}
-                          </h5>
-                          <p className="text-[10px] text-neutral-400 font-mono">
+                          <p className="text-xs font-bold truncate">{item.title}</p>
+                          <p className={`text-[9px] ${isSelected ? "opacity-70" : "text-[var(--ink-secondary)]"}`}>
                             {item.format.toUpperCase()} • {formatBytes(item.size)}
                           </p>
                         </div>
@@ -443,10 +504,12 @@ export default function AudioPlayerPage() {
                       <button
                         type="button"
                         onClick={(e) => handleDeleteItem(item.id, e)}
-                        className="p-1.5 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-red-500/10 opacity-70 group-hover:opacity-100 transition-all cursor-pointer"
-                        title="Delete from Queue"
+                        className={`p-1 opacity-60 hover:opacity-100 transition-opacity cursor-pointer ${
+                          isSelected ? "text-[var(--bg-primary)]" : "text-[var(--ink-secondary)]"
+                        }`}
+                        title="Remove"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3 h-3 stroke-[1.5]" />
                       </button>
                     </div>
                   );

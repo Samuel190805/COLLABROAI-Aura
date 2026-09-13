@@ -235,9 +235,13 @@ except Exception as e:
             await fs.promises.unlink(conditionedPath).catch(() => {});
           }
 
+          const detectedLang = languageHint && languageHint !== "auto"
+            ? languageHint
+            : this.detectLanguageFromText(recognizedText);
+
           return {
             text: recognizedText,
-            detectedLanguage: languageHint && languageHint !== "auto" ? languageHint : "en",
+            detectedLanguage: detectedLang,
             confidence: 0.96,
             durationSeconds: audioDuration || 10,
             segments,
@@ -285,6 +289,20 @@ except Exception as e:
       speakerId: `Speaker ${(idx % 2) + 1}`,
       confidence: 0.95,
     }));
+  }
+
+  private detectLanguageFromText(text: string): string {
+    if (/[\u0B80-\u0BFF]/.test(text)) return "ta"; // Tamil
+    if (/[\u0900-\u097F]/.test(text)) return "hi"; // Hindi
+    if (/[\u4E00-\u9FFF]/.test(text)) return "zh"; // Chinese
+    if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) return "ja"; // Japanese
+    if (/[\uAC00-\uD7AF]/.test(text)) return "ko"; // Korean
+    if (/[\u0600-\u06FF]/.test(text)) return "ar"; // Arabic
+    if (/[\u0400-\u04FF]/.test(text)) return "ru"; // Russian
+    if (/[áéíóúñ¿¡]/i.test(text)) return "es"; // Spanish
+    if (/[àâçéèêëîïôûùüÿœæ]/i.test(text)) return "fr"; // French
+    if (/[äöüß]/i.test(text)) return "de"; // German
+    return "en";
   }
 }
 

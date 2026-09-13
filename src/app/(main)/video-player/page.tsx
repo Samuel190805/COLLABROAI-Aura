@@ -1,24 +1,15 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Video,
-  Youtube,
-  FolderPlus,
-  FilePlus,
-  Play,
-  Trash2,
+  Upload,
   Link2,
-  HardDrive,
+  Trash2,
   ListVideo,
-  Sparkles,
 } from "lucide-react";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Tabs } from "@/components/ui/Tabs";
-import { VideoPlayerView } from "@/components/video/VideoPlayerView";
+import { MediaPlayer } from "@/components/player/MediaPlayer";
 import { localLibrary, LocalMediaItem } from "@/lib/localLibrary";
 import { formatBytes } from "@/lib/utils";
 
@@ -26,13 +17,11 @@ function VideoPlayerContent() {
   const searchParams = useSearchParams();
   const initialUrl = searchParams.get("url") || "";
 
-  const [mode, setMode] = useState<"local" | "youtube">(
-    initialUrl ? "youtube" : "local"
-  );
-  const [youtubeUrl, setYoutubeUrl] = useState(
+  const [mode, setMode] = useState<"youtube" | "local">(initialUrl ? "youtube" : "youtube");
+  const [urlInput, setUrlInput] = useState(
     initialUrl || "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
   );
-  const [activeYoutubeUrl, setActiveYoutubeUrl] = useState(
+  const [activeVideoUrl, setActiveVideoUrl] = useState(
     initialUrl || "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
   );
 
@@ -40,7 +29,6 @@ function VideoPlayerContent() {
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const folderInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadLocalLibrary = React.useCallback(async () => {
     try {
@@ -82,16 +70,18 @@ function VideoPlayerContent() {
       await localLibrary.addItem(item);
     }
 
+    setMode("local");
     await loadLocalLibrary();
   };
 
   const currentLocalTrack =
     currentIndex >= 0 && currentIndex < items.length ? items[currentIndex] : null;
 
-  const handleApplyYoutubeUrl = (e: React.FormEvent) => {
+  const handleApplyUrl = (e: React.FormEvent) => {
     e.preventDefault();
-    if (youtubeUrl.trim()) {
-      setActiveYoutubeUrl(youtubeUrl.trim());
+    if (urlInput.trim()) {
+      setActiveVideoUrl(urlInput.trim());
+      setMode("youtube");
     }
   };
 
@@ -107,219 +97,142 @@ function VideoPlayerContent() {
     setCurrentIndex(-1);
   };
 
+  const activeSrc = mode === "youtube" ? activeVideoUrl : currentLocalTrack?.url || "";
+  const activeTitle = mode === "youtube" ? "Video Stream" : currentLocalTrack?.title || "Local Video";
+
   return (
-    <div className="w-full pt-28 pb-20 px-4 sm:px-6 mode-b-precision">
-      <div className="max-w-5xl mx-auto flex flex-col items-center gap-8">
-        {/* Title Header */}
-        <div className="text-center max-w-2xl flex flex-col items-center gap-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-widest text-apple-blue bg-apple-blue/10 border border-apple-blue/20">
-            <Video className="w-3.5 h-3.5" />
-            <span>Local Cinema & Official Embed</span>
+    <div className="min-h-screen bg-mono-bg text-mono-ink px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="border-b border-black/10 dark:border-white/10 pb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <span className="font-mono text-xs uppercase tracking-widest text-neutral-500">Video Playback</span>
+            <h1 className="text-3xl font-bold tracking-tight mt-1">Unified Video Player</h1>
+            <p className="text-sm text-neutral-500 mt-1">
+              Supports YouTube streaming and local video containers with theater mode and Picture-in-Picture.
+            </p>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
-            Video Player
-          </h1>
-          <p className="text-sm text-neutral-400 font-normal">
-            Local-first video player and official YouTube embed viewer with instant one-click export.
-          </p>
-        </div>
 
-        {/* Mode Selector */}
-        <div className="flex justify-center">
-          <Tabs
-            tabs={[
-              { id: "local", label: "Local Video Files", icon: <Video className="w-4 h-4" /> },
-              { id: "youtube", label: "YouTube Embed", icon: <Youtube className="w-4 h-4" /> },
-            ]}
-            activeTab={mode}
-            onChange={(id) => setMode(id as any)}
-          />
-        </div>
-
-        {/* Hidden file & folder inputs */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="video/*"
-          onChange={handleAddFiles}
-          className="hidden"
-        />
-        <input
-          ref={folderInputRef}
-          type="file"
-          multiple
-          // @ts-expect-error webkitdirectory is standard for folder picker
-          webkitdirectory=""
-          directory=""
-          onChange={handleAddFiles}
-          className="hidden"
-        />
-
-        {/* YouTube URL Bar */}
-        {mode === "youtube" && (
-          <Card variant="glass" className="w-full p-4">
-            <form onSubmit={handleApplyYoutubeUrl} className="flex items-center gap-3">
-              <div className="flex-1">
-                <Input
-                  placeholder="Paste YouTube link (e.g. https://www.youtube.com/watch?v=...)"
-                  value={youtubeUrl}
-                  onChange={(e) => setYoutubeUrl(e.target.value)}
-                  leftIcon={<Link2 className="w-4 h-4 text-apple-blue" />}
-                />
-              </div>
-              <Button type="submit" size="sm" className="h-10 text-xs shrink-0 bg-apple-blue hover:bg-apple-blueHover text-white">
-                Load Video
-              </Button>
-            </form>
-          </Card>
-        )}
-
-        {/* Main Video Viewport */}
-        <div className="w-full">
-          {mode === "youtube" ? (
-            <VideoPlayerView
-              mode="youtube"
-              src={activeYoutubeUrl}
-              title="YouTube Player (Official Embed)"
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*,.mp4,.webm,.mkv,.mov"
+              multiple
+              onChange={handleAddFiles}
+              className="hidden"
             />
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              {/* Main Local Player */}
-              <div className="lg:col-span-8 flex flex-col gap-4">
-                {currentLocalTrack ? (
-                  <VideoPlayerView
-                    mode="local"
-                    src={currentLocalTrack.url}
-                    title={currentLocalTrack.title}
-                  />
-                ) : (
-                  <Card
-                    variant="glass"
-                    className="aspect-video flex flex-col items-center justify-center text-center p-8 gap-4"
-                  >
-                    <div className="w-16 h-16 rounded-3xl bg-neutral-800 text-neutral-400 flex items-center justify-center">
-                      <Video className="w-8 h-8" />
-                    </div>
-                    <div>
-                      <h4 className="text-base font-bold text-white">
-                        No Local Video Selected
-                      </h4>
-                      <p className="text-xs text-neutral-400 max-w-sm mt-1">
-                        Pick local MP4, WebM, MKV, or MOV files from your device to start playback.
-                      </p>
-                    </div>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-xs flex items-center gap-1.5 bg-apple-blue hover:bg-apple-blueHover text-white"
-                    >
-                      <FilePlus className="w-3.5 h-3.5" /> Choose Video File
-                    </Button>
-                  </Card>
-                )}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-3 py-1.5 border border-black/10 dark:border-white/10 text-xs font-medium hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors flex items-center gap-1.5"
+            >
+              <Upload className="w-3.5 h-3.5" /> Upload Video
+            </button>
+          </div>
+        </div>
+
+        {/* Input Bar */}
+        <form onSubmit={handleApplyUrl} className="flex gap-2">
+          <div className="relative flex-1">
+            <Link2 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="Paste YouTube or video stream URL..."
+              className="w-full bg-white dark:bg-[#0A0A0A] border border-black/10 dark:border-white/10 pl-9 pr-3 py-2 text-xs font-mono focus:outline-none focus:border-black dark:focus:border-white"
+            />
+          </div>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-black text-white dark:bg-white dark:text-black text-xs font-medium hover:opacity-90 transition-opacity"
+          >
+            Load Video
+          </button>
+        </form>
+
+        {/* Player + Library Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Unified Player */}
+          <div className="lg:col-span-2 space-y-4">
+            {activeSrc ? (
+              <MediaPlayer
+                key={activeSrc}
+                src={activeSrc}
+                mediaType="video"
+                title={activeTitle}
+                artist={mode === "youtube" ? "Web Stream" : "Local File"}
+              />
+            ) : (
+              <div className="h-64 border border-black/10 dark:border-white/10 flex flex-col items-center justify-center text-neutral-400 text-xs gap-2">
+                <Video className="w-8 h-8 opacity-40" />
+                No video loaded. Enter a URL or upload a file.
               </div>
+            )}
+          </div>
 
-              {/* Local Video Queue List */}
-              <div className="lg:col-span-4 flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ListVideo className="w-4 h-4 text-apple-blue" />
-                    <h4 className="text-sm font-bold text-white">
-                      Local Videos ({items.length})
-                    </h4>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="glass"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-xs flex items-center gap-1"
-                    >
-                      <FilePlus className="w-3.5 h-3.5" /> Files
-                    </Button>
-                    <Button
-                      variant="glass"
-                      size="sm"
-                      onClick={() => folderInputRef.current?.click()}
-                      className="text-xs flex items-center gap-1"
-                    >
-                      <FolderPlus className="w-3.5 h-3.5" /> Folder
-                    </Button>
-                    {items.length > 0 && (
-                      <button
-                        onClick={handleClearAll}
-                        className="p-1.5 rounded-lg text-neutral-400 hover:text-red-500 transition-colors"
-                        title="Clear Queue"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {items.length === 0 ? (
-                  <Card variant="glass" className="p-6 text-center flex flex-col items-center gap-2">
-                    <HardDrive className="w-6 h-6 text-neutral-400" />
-                    <p className="text-xs text-neutral-400">Queue is empty</p>
-                  </Card>
-                ) : (
-                  <div className="flex flex-col gap-2 max-h-[440px] overflow-y-auto pr-1">
-                    {items.map((item, idx) => {
-                      const isSelected = idx === currentIndex;
-
-                      return (
-                        <div
-                          key={item.id}
-                          onClick={() => setCurrentIndex(idx)}
-                          className={`group flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-200 ${
-                            isSelected
-                              ? "bg-apple-blue/15 border-apple-blue/30 shadow-sm"
-                              : "bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/[0.08]"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div
-                              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                                isSelected
-                                  ? "bg-apple-blue text-white shadow-sm shadow-apple-blue/40"
-                                  : "bg-neutral-800 text-neutral-400 group-hover:text-white"
-                              }`}
-                            >
-                              <Play className="w-4 h-4 fill-current ml-0.5" />
-                            </div>
-                            <div className="min-w-0">
-                              <h5
-                                className={`text-xs font-semibold truncate ${
-                                  isSelected ? "text-apple-blue font-bold" : "text-neutral-200 group-hover:text-white"
-                                }`}
-                              >
-                                {item.title}
-                              </h5>
-                              <p className="text-[10px] text-neutral-400 font-mono">
-                                {item.format.toUpperCase()} • {formatBytes(item.size)}
-                              </p>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteItem(item.id, e)}
-                            className="p-1.5 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-red-500/10 opacity-70 group-hover:opacity-100 transition-all cursor-pointer"
-                            title="Delete from Queue"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+          {/* Local Library / Queue */}
+          <div className="border border-black/10 dark:border-white/10 bg-white dark:bg-[#0A0A0A] p-4 flex flex-col h-[520px]">
+            <div className="flex items-center justify-between pb-3 border-b border-black/10 dark:border-white/10 mb-3">
+              <div className="flex items-center gap-1.5 font-medium text-xs">
+                <ListVideo className="w-4 h-4" /> Local Library ({items.length})
               </div>
+              {items.length > 0 && (
+                <button
+                  onClick={handleClearAll}
+                  className="text-[11px] text-neutral-400 hover:text-red-500 transition-colors flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" /> Clear
+                </button>
+              )}
             </div>
-          )}
+
+            <div className="flex-1 overflow-y-auto space-y-1 pr-1">
+              {items.length === 0 ? (
+                <div className="text-center py-10 space-y-2">
+                  <p className="text-xs text-neutral-400">No local files in library</p>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-[11px] underline text-neutral-500 hover:text-black dark:hover:text-white"
+                  >
+                    Add video files
+                  </button>
+                </div>
+              ) : (
+                items.map((item, idx) => {
+                  const isCurrent = mode === "local" && idx === currentIndex;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        setCurrentIndex(idx);
+                        setMode("local");
+                      }}
+                      className={`p-2 border text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                        isCurrent
+                          ? "bg-black text-white dark:bg-white dark:text-black border-black dark:border-white font-medium"
+                          : "border-black/5 dark:border-white/5 hover:border-black/20 dark:hover:border-white/20"
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate">{item.title}</p>
+                        <p className={`text-[10px] truncate ${isCurrent ? "opacity-70" : "text-neutral-500"}`}>
+                          {item.format.toUpperCase()} &bull; {formatBytes(item.size)}
+                        </p>
+                      </div>
+                      <button
+                        onClick={(e) => handleDeleteItem(item.id, e)}
+                        className="opacity-40 hover:opacity-100 p-1"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -331,7 +244,7 @@ export default function VideoPlayerPage() {
     <Suspense
       fallback={
         <div className="flex items-center justify-center min-h-[50vh]">
-          <div className="w-8 h-8 rounded-full border-2 border-apple-blue border-t-transparent animate-spin" />
+          <div className="w-5 h-5 border-2 border-black dark:border-white border-t-transparent animate-spin" />
         </div>
       }
     >

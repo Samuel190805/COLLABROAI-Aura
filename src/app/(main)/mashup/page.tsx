@@ -1,79 +1,64 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, Suspense } from "react";
 import {
   Layers,
-  Sparkles,
-  UploadCloud,
   Link2,
-  Sliders,
+  FileAudio,
+  RotateCcw,
+  AlertCircle,
   Play,
   Pause,
-  RotateCcw,
-  Volume2,
-  Zap,
-  CheckCircle2,
-  AlertCircle,
-  AlertTriangle,
   Download,
-  Flame,
-  ArrowRight,
-  Disc,
 } from "lucide-react";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Tabs } from "@/components/ui/Tabs";
 import { Select } from "@/components/ui/Select";
+import { Tabs } from "@/components/ui/Tabs";
 import { FileDropzone } from "@/components/ui/FileDropzone";
 import { StageStepper } from "@/components/ui/StageStepper";
-import { ProgressRing } from "@/components/ui/ProgressRing";
 import { WaveformVisualizer } from "@/components/audio/WaveformVisualizer";
-import { MashupHero } from "@/components/visual/MashupHero";
+import { MediaPlayer } from "@/components/player/MediaPlayer";
 import { ModeAHero } from "@/components/layout/ModeAHero";
-import { StemSelection, CompatibilityScore, calculateCompatibility } from "@/domain/value-objects/MashupConfig";
 import { useRealtimeJob } from "@/lib/useRealtimeJob";
-import { formatDuration, formatBytes } from "@/lib/utils";
+import { formatDuration } from "@/lib/utils";
 
-function MashupCreatorContent() {
-  // Track A State
+const STAGES = [
+  { id: "RESOLVING", label: "Resolve" },
+  { id: "ANALYSIS", label: "2-Stem Split" },
+  { id: "MODEL_INFERENCE", label: "Key / BPM" },
+  { id: "STEM_RECONSTRUCTION", label: "Align" },
+  { id: "EXPORT", label: "Master" },
+];
+
+function MashupContent() {
   const [modeA, setModeA] = useState<"file" | "url">("file");
   const [fileA, setFileA] = useState<File | null>(null);
-  const [urlA, setUrlA] = useState<string>("");
+  const [urlA, setUrlA] = useState("");
 
-  // Track B State
   const [modeB, setModeB] = useState<"file" | "url">("file");
   const [fileB, setFileB] = useState<File | null>(null);
-  const [urlB, setUrlB] = useState<string>("");
+  const [urlB, setUrlB] = useState("");
 
-  // Stem Selection (Default: Vocals from Track A, Beat & Bass from Track B)
-  const [selection, setSelection] = useState<StemSelection>({
-    trackA: { vocals: true, drums: false, bass: false, other: false },
-    trackB: { vocals: false, drums: true, bass: true, other: true },
-  });
+  // Simplified 2-Stem Selection: Which track's Vocals and which track's Instrument to keep
+  const [vocalsFrom, setVocalsFrom] = useState<"A" | "B">("A");
+  const [instrumentFrom, setInstrumentFrom] = useState<"A" | "B">("B");
 
-  // Mixing & DSP Controls
-  const [autoKeyMatch, setAutoKeyMatch] = useState<boolean>(true);
-  const [autoTempoMatch, setAutoTempoMatch] = useState<boolean>(true);
+  const [autoKeyMatch, setAutoKeyMatch] = useState(true);
+  const [autoTempoMatch, setAutoTempoMatch] = useState(true);
   const [outputFormat, setOutputFormat] = useState<"mp3" | "wav" | "flac">("mp3");
 
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Live Compatibility Estimation
-  const [compatibility, setCompatibility] = useState<CompatibilityScore>(
-    calculateCompatibility("C Major", "8B", 124, "G Major", "9B", 126)
-  );
-
-  // Completed Mashup State
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(180);
+  // Playback state for completed mashup
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(180);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   const {
     jobId,
-    status,
     stage,
     progress,
     message,
@@ -86,487 +71,353 @@ function MashupCreatorContent() {
     reset,
   } = useRealtimeJob();
 
-  const stagesList = [
-    { id: "RESOLVING", label: "Resolving", description: "Fetch streams" },
-    { id: "ANALYSIS", label: "Dual Isolation", description: "Demucs v4 stems" },
-    { id: "MODEL_INFERENCE", label: "Key & Tempo", description: "Camelot alignment" },
-    { id: "STEM_RECONSTRUCTION", label: "Pitch & Time", description: "DSP modulation" },
-    { id: "EXPORT", label: "Mastering", description: "-14 LUFS mixdown" },
-  ];
-
   const handleStartMashup = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
 
-    const hasSourceA = (modeA === "file" && fileA) || (modeA === "url" && urlA.trim());
-    const hasSourceB = (modeB === "file" && fileB) || (modeB === "url" && urlB.trim());
-
-    if (!hasSourceA || !hasSourceB) {
-      setSubmitError("Please provide both Track A and Track B audio sources");
+    if (modeA === "file" && !fileA) {
+      setSubmitError("Please select Track A audio file");
       return;
     }
-
-    const anyA = Object.values(selection.trackA).some(Boolean);
-    const anyB = Object.values(selection.trackB).some(Boolean);
-    if (!anyA && !anyB) {
-      setSubmitError("Please select at least one stem to include in the remix");
+    if (modeA === "url" && !urlA.trim()) {
+      setSubmitError("Please enter Track A media URL");
+      return;
+    }
+    if (modeB === "file" && !fileB) {
+      setSubmitError("Please select Track B audio file");
+      return;
+    }
+    if (modeB === "url" && !urlB.trim()) {
+      setSubmitError("Please enter Track B media URL");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const formData = new FormData();
-      if (modeA === "file" && fileA) formData.append("fileA", fileA);
-      if (modeA === "url") formData.append("urlA", urlA.trim());
+      let res: Response;
 
-      if (modeB === "file" && fileB) formData.append("fileB", fileB);
-      if (modeB === "url") formData.append("urlB", urlB.trim());
+      if ((modeA === "file" && fileA) || (modeB === "file" && fileB)) {
+        const formData = new FormData();
+        if (fileA) formData.append("fileA", fileA);
+        if (urlA.trim()) formData.append("urlA", urlA.trim());
+        if (fileB) formData.append("fileB", fileB);
+        if (urlB.trim()) formData.append("urlB", urlB.trim());
 
-      formData.append("selection", JSON.stringify(selection));
-      formData.append("autoKeyMatch", String(autoKeyMatch));
-      formData.append("autoTempoMatch", String(autoTempoMatch));
-      formData.append("outputFormat", outputFormat);
+        formData.append("selection", JSON.stringify({ vocalsSource: vocalsFrom, instrumentSource: instrumentFrom, vocalsFrom, instrumentFrom }));
+        formData.append("autoKeyMatch", String(autoKeyMatch));
+        formData.append("autoTempoMatch", String(autoTempoMatch));
+        formData.append("outputFormat", outputFormat);
 
-      const res = await fetch("/api/mashup/create", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to initialize mashup creation");
+        res = await fetch("/api/mashup", { method: "POST", body: formData });
+      } else {
+        res = await fetch("/api/mashup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trackA: { type: "url", url: urlA.trim(), name: "Track A" },
+            trackB: { type: "url", url: urlB.trim(), name: "Track B" },
+            selection: { vocalsSource: vocalsFrom, instrumentSource: instrumentFrom, vocalsFrom, instrumentFrom },
+            autoKeyMatch,
+            autoTempoMatch,
+            outputFormat,
+          }),
+        });
       }
 
-      watchJob(data.jobId);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.jobId) {
+        watchJob(data.jobId);
+      } else {
+        throw new Error("Missing jobId in response");
+      }
     } catch (err: unknown) {
-      setSubmitError(err instanceof Error ? err.message : "Mashup initiation failed");
+      setSubmitError(err instanceof Error ? err.message : "Failed to initialize mashup");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const toggleStem = (track: "trackA" | "trackB", stem: "vocals" | "drums" | "bass" | "other") => {
-    setSelection((prev) => ({
-      ...prev,
-      [track]: {
-        ...prev[track],
-        [stem]: !prev[track][stem],
-      },
-    }));
+  const handleReset = () => {
+    reset();
+    setFileA(null);
+    setUrlA("");
+    setFileB(null);
+    setUrlB("");
+    setSubmitError(null);
+    setIsPlaying(false);
   };
 
-  const completedAsset = mediaAssets && mediaAssets.length > 0 ? mediaAssets[0] : null;
+  const masterAsset = mediaAssets?.[0];
 
   return (
     <div className="w-full flex flex-col items-center">
-      {/* =========================================================================
-          MODE A: HERO CHAPTER (Editorial Storytelling)
-          ========================================================================= */}
       <ModeAHero
-        chapterNumber="06 // HARMONIC REMIXING"
-        badge="Camelot Harmonic Matrix"
-        headline="Two songs. One harmonic blend."
-        subheadline="Automated Camelot key matching, phase beat synchronization, and -14 LUFS mastering."
-        description="Blend vocals, basslines, and beats across any two tracks. The harmonic collision engine detects relative Camelot keys, aligns tempo phases, and safeguards audio quality with strict ±4 semitone shift caps."
-        stats={[
-          { label: "Harmonic Theory", value: "Camelot Wheel" },
-          { label: "Pitch Safety Cap", value: "±4 st" },
-          { label: "Phase Beat Sync", value: "Locked" },
-          { label: "Master Loudness", value: "-14 LUFS" },
-        ]}
-        visualComponent={<MashupHero />}
+        chapterNumber="CHAPTER 04 // STUDIO"
+        badge="2-STEM VOCAL + INSTRUMENT PAIRING"
+        headline="MASHUP STUDIO"
+        subheadline="Combine the Vocal from Track A with the Instrument from Track B."
+        description="Pristine Camelot Wheel harmonic key detection & BPM detection analyzed against isolated Instrument stems, auto pitch-shifting (max ±4 semitones), and auto tempo-stretching into a mastered mix."
         toolAnchorId="mashup-workspace"
-        toolCtaText="Launch Mashup Studio"
+        toolCtaText="Open Mashup Workspace"
       />
 
-      {/* =========================================================================
-          SEAM & MODE B: CALM PRECISION STUDIO WORKSPACE
-          ========================================================================= */}
-      <div
-        id="mashup-workspace"
-        className="w-full border-t border-white/10 bg-[#080809] py-16 px-4 sm:px-6 mode-b-precision"
-      >
-        <div className="max-w-5xl mx-auto flex flex-col items-center gap-8">
-          {/* Workspace Title Header */}
-          <div className="w-full flex items-center justify-between pb-4 border-b border-white/10">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-rose-600 flex items-center justify-center text-white shadow-sm">
-                <Layers className="w-4 h-4" />
-              </div>
+      <div id="mashup-workspace" className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {isCompleted && masterAsset ? (
+          <div className="p-6 sm:p-8 border-hairline bg-mono-bg rounded-sm flex flex-col gap-6">
+            <div className="flex items-center justify-between pb-4 border-b-hairline font-mono text-xs">
               <div>
-                <h2 className="text-lg font-bold text-white tracking-tight">
-                  AI Mashup & Remix Studio
-                </h2>
-                <p className="text-xs text-neutral-400 font-mono">
-                  Demucs Dual De-mixing • Rubberband Time & Pitch • -14 LUFS Mixdown
-                </p>
+                <span className="font-bold text-mono-ink uppercase">{masterAsset.name}</span>
+                <p className="text-mono-inkMuted text-[11px] mt-0.5">EBU R128 -14 LUFS Normalized Master</p>
               </div>
+              <Button variant="outline" pill={false} onClick={handleReset} className="h-8 gap-1.5 text-xs font-mono">
+                <RotateCcw className="w-3.5 h-3.5" /> CREATE ANOTHER MASHUP
+              </Button>
             </div>
 
-            <span className="text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
-              DUAL STEM COLLISION
-            </span>
+            <MediaPlayer
+              src={masterAsset.filePath}
+              mediaType="audio"
+              title={masterAsset.name}
+              artist="Mastered 2-Stem Mashup"
+            />
+
+            <div className="flex items-center justify-end pt-4 border-t-hairline">
+              <a
+                href={masterAsset.filePath}
+                download={`${masterAsset.name.toLowerCase().replace(/[^a-z0-9_-]/g, "_")}.${masterAsset.format || "mp3"}`}
+                className="h-9 px-4 rounded-sm border-hairline flex items-center gap-2 text-xs font-mono hover:bg-mono-ink hover:text-mono-bg transition-colors"
+              >
+                <Download className="w-3.5 h-3.5 stroke-[1.5]" />
+                <span>DOWNLOAD MASTER</span>
+              </a>
+            </div>
           </div>
+        ) : (
+          <div className="p-6 sm:p-8 border-hairline bg-mono-bg rounded-sm flex flex-col gap-6">
+            <div className="pb-4 border-b-hairline">
+              <h3 className="font-mono text-sm font-bold uppercase tracking-tight">
+                Dual Track Ingestion & Stem Selection
+              </h3>
+              <p className="text-xs text-mono-inkMuted font-mono mt-0.5">
+                Choose which song provides the Vocals and which provides the Instrument
+              </p>
+            </div>
 
-          {/* Main Setup Studio Card */}
-          {!isProcessing && !isCompleted && (
-            <Card variant="glass" className="w-full p-6 sm:p-8 shadow-apple dark:shadow-apple-dark">
-              <form onSubmit={handleStartMashup} className="flex flex-col gap-8">
-                {/* Dual Track Inputs Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Track A Box (Acapella / Lead) */}
-                  <div className="p-5 rounded-2xl bg-indigo-500/5 border border-indigo-500/20 flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm">
-                        <Disc className="w-4 h-4" />
-                        <span>Track A (Lead / Vocals)</span>
-                      </div>
-                      <Tabs
-                        tabs={[
-                          { id: "file", label: "Upload" },
-                          { id: "url", label: "URL" },
-                        ]}
-                        activeTab={modeA}
-                        onChange={(id) => setModeA(id as any)}
-                      />
-                    </div>
-
-                    {modeA === "file" ? (
-                      <FileDropzone
-                        selectedFile={fileA}
-                        onFileSelect={setFileA}
-                        label="Select Track A audio file"
-                        sublabel="MP3, WAV, FLAC up to 100MB"
-                      />
-                    ) : (
-                      <Input
-                        placeholder="https://www.youtube.com/watch?v=..."
-                        value={urlA}
-                        onChange={(e) => setUrlA(e.target.value)}
-                        leftIcon={<Link2 className="w-4 h-4 text-indigo-500" />}
-                      />
-                    )}
-
-                    {/* Track A Stem Checklist */}
-                    <div className="pt-2 border-t border-indigo-500/10">
-                      <span className="text-xs font-semibold text-neutral-400 block mb-2">
-                        Include Stems from Track A:
-                      </span>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { key: "vocals", label: "Vocals", color: "#6366F1" },
-                          { key: "drums", label: "Drums", color: "#F43F5E" },
-                          { key: "bass", label: "Bass", color: "#10B981" },
-                          { key: "other", label: "Instruments", color: "#F59E0B" },
-                        ].map((stem) => {
-                          const isChecked = selection.trackA[stem.key as keyof typeof selection.trackA];
-                          return (
-                            <button
-                              key={`stemA_${stem.key}`}
-                              type="button"
-                              onClick={() => toggleStem("trackA", stem.key as any)}
-                              className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all ${
-                                isChecked
-                                  ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                                  : "bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10"
-                              }`}
-                            >
-                              <span>{stem.label}</span>
-                              <span
-                                className="w-2 h-2 rounded-full"
-                                style={{ backgroundColor: isChecked ? "#fff" : stem.color }}
-                              />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Track B Box (Instrumental / Beat) */}
-                  <div className="p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-                        <Disc className="w-4 h-4" />
-                        <span>Track B (Backing / Beat)</span>
-                      </div>
-                      <Tabs
-                        tabs={[
-                          { id: "file", label: "Upload" },
-                          { id: "url", label: "URL" },
-                        ]}
-                        activeTab={modeB}
-                        onChange={(id) => setModeB(id as any)}
-                      />
-                    </div>
-
-                    {modeB === "file" ? (
-                      <FileDropzone
-                        selectedFile={fileB}
-                        onFileSelect={setFileB}
-                        label="Select Track B audio file"
-                        sublabel="MP3, WAV, FLAC up to 100MB"
-                      />
-                    ) : (
-                      <Input
-                        placeholder="https://www.youtube.com/watch?v=..."
-                        value={urlB}
-                        onChange={(e) => setUrlB(e.target.value)}
-                        leftIcon={<Link2 className="w-4 h-4 text-emerald-500" />}
-                      />
-                    )}
-
-                    {/* Track B Stem Checklist */}
-                    <div className="pt-2 border-t border-emerald-500/10">
-                      <span className="text-xs font-semibold text-neutral-400 block mb-2">
-                        Include Stems from Track B:
-                      </span>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { key: "vocals", label: "Vocals", color: "#6366F1" },
-                          { key: "drums", label: "Drums", color: "#F43F5E" },
-                          { key: "bass", label: "Bass", color: "#10B981" },
-                          { key: "other", label: "Instruments", color: "#F59E0B" },
-                        ].map((stem) => {
-                          const isChecked = selection.trackB[stem.key as keyof typeof selection.trackB];
-                          return (
-                            <button
-                              key={`stemB_${stem.key}`}
-                              type="button"
-                              onClick={() => toggleStem("trackB", stem.key as any)}
-                              className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all ${
-                                isChecked
-                                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                                  : "bg-white/5 border-white/10 text-neutral-300 hover:bg-white/10"
-                              }`}
-                            >
-                              <span>{stem.label}</span>
-                              <span
-                                className="w-2 h-2 rounded-full"
-                                style={{ backgroundColor: isChecked ? "#fff" : stem.color }}
-                              />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pre-Render Compatibility Meter & DSP Options */}
-                <div className="p-5 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-4">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 font-bold">
-                        <Flame className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">
-                          Harmonic Compatibility: {compatibility.scorePercent}% Match
-                        </h4>
-                        <p className="text-xs text-neutral-400 font-mono">
-                          Camelot: {compatibility.camelotA} vs {compatibility.camelotB} • BPM: {compatibility.bpmA} vs {compatibility.bpmB}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {compatibility.pitchShiftCapped && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" /> Pitch Shift Capped (±4 st)
-                        </span>
-                      )}
-                      {compatibility.tempoStretchWarning && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/10 text-red-500 border border-red-500/20 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" /> &gt;20% Tempo Stretch
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Toggles & Format */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-white/5">
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-neutral-300">
-                      <input
-                        type="checkbox"
-                        checked={autoKeyMatch}
-                        onChange={(e) => setAutoKeyMatch(e.target.checked)}
-                        className="rounded text-apple-blue focus:ring-apple-blue"
-                      />
-                      <span>Auto Key-Matching (Pitch-shift capped ±4 st)</span>
-                    </label>
-
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-neutral-300">
-                      <input
-                        type="checkbox"
-                        checked={autoTempoMatch}
-                        onChange={(e) => setAutoTempoMatch(e.target.checked)}
-                        className="rounded text-apple-blue focus:ring-apple-blue"
-                      />
-                      <span>Auto Tempo-Matching (Time-stretch to sync)</span>
-                    </label>
-
-                    <Select
-                      label="Mastering Format"
-                      value={outputFormat}
-                      onChange={(e) => setOutputFormat(e.target.value as any)}
-                      options={[
-                        { value: "mp3", label: "MP3 (320 kbps Master)" },
-                        { value: "wav", label: "WAV (Uncompressed 24-bit)" },
-                        { value: "flac", label: "FLAC (Lossless Free Audio)" },
+            <form onSubmit={handleStartMashup} className="flex flex-col gap-6">
+              {/* Dual Track Selectors */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Track A */}
+                <div className="p-4 border-hairline bg-mono-bgAlt rounded-sm flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold uppercase">Track A</span>
+                    <Tabs
+                      tabs={[
+                        { id: "file", label: "File" },
+                        { id: "url", label: "URL" },
                       ]}
+                      activeTab={modeA}
+                      onChange={(id) => setModeA(id as "file" | "url")}
                     />
                   </div>
+                  {modeA === "file" ? (
+                    <FileDropzone
+                      accept="audio/*,video/*"
+                      onFileSelect={setFileA}
+                      selectedFile={fileA}
+                      label="Select Track A Audio"
+                      sublabel="MP3, WAV, FLAC"
+                    />
+                  ) : (
+                    <Input
+                      label="Track A URL"
+                      placeholder="https://..."
+                      value={urlA}
+                      onChange={(e) => setUrlA(e.target.value)}
+                    />
+                  )}
                 </div>
 
-                {submitError && (
-                  <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-500 font-medium flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{submitError}</span>
+                {/* Track B */}
+                <div className="p-4 border-hairline bg-mono-bgAlt rounded-sm flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold uppercase">Track B</span>
+                    <Tabs
+                      tabs={[
+                        { id: "file", label: "File" },
+                        { id: "url", label: "URL" },
+                      ]}
+                      activeTab={modeB}
+                      onChange={(id) => setModeB(id as "file" | "url")}
+                    />
                   </div>
-                )}
+                  {modeB === "file" ? (
+                    <FileDropzone
+                      accept="audio/*,video/*"
+                      onFileSelect={setFileB}
+                      selectedFile={fileB}
+                      label="Select Track B Audio"
+                      sublabel="MP3, WAV, FLAC"
+                    />
+                  ) : (
+                    <Input
+                      label="Track B URL"
+                      placeholder="https://..."
+                      value={urlB}
+                      onChange={(e) => setUrlB(e.target.value)}
+                    />
+                  )}
+                </div>
+              </div>
 
+              {/* Simplified 2-Stem Selection Matrix */}
+              <div className="p-5 border-hairline bg-mono-bg rounded-sm flex flex-col gap-4">
+                <span className="font-mono text-xs font-bold uppercase tracking-wide">
+                  Pairing Configuration
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Vocals Source Radio */}
+                  <div className="p-3 border-hairline rounded-sm">
+                    <p className="font-mono text-[11px] text-mono-inkMuted mb-2 uppercase">Vocals Source</p>
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer font-mono text-xs">
+                        <input
+                          type="radio"
+                          name="vocalsFrom"
+                          value="A"
+                          checked={vocalsFrom === "A"}
+                          onChange={() => setVocalsFrom("A")}
+                          className="accent-mono-ink"
+                        />
+                        <span>Track A Vocals</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer font-mono text-xs">
+                        <input
+                          type="radio"
+                          name="vocalsFrom"
+                          value="B"
+                          checked={vocalsFrom === "B"}
+                          onChange={() => setVocalsFrom("B")}
+                          className="accent-mono-ink"
+                        />
+                        <span>Track B Vocals</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Instrument Source Radio */}
+                  <div className="p-3 border-hairline rounded-sm">
+                    <p className="font-mono text-[11px] text-mono-inkMuted mb-2 uppercase">Instrument Source</p>
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer font-mono text-xs">
+                        <input
+                          type="radio"
+                          name="instrumentFrom"
+                          value="A"
+                          checked={instrumentFrom === "A"}
+                          onChange={() => setInstrumentFrom("A")}
+                          className="accent-mono-ink"
+                        />
+                        <span>Track A Instrument</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer font-mono text-xs">
+                        <input
+                          type="radio"
+                          name="instrumentFrom"
+                          value="B"
+                          checked={instrumentFrom === "B"}
+                          onChange={() => setInstrumentFrom("B")}
+                          className="accent-mono-ink"
+                        />
+                        <span>Track B Instrument</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DSP Alignment Switches */}
+                <div className="flex flex-wrap items-center gap-6 pt-2 font-mono text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoKeyMatch}
+                      onChange={(e) => setAutoKeyMatch(e.target.checked)}
+                      className="accent-mono-ink"
+                    />
+                    <span>Auto Key-Match (max ±4 semitones)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoTempoMatch}
+                      onChange={(e) => setAutoTempoMatch(e.target.checked)}
+                      className="accent-mono-ink"
+                    />
+                    <span>Auto Tempo-Stretch (BPM align)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Submit Error */}
+              {(submitError || error) && (
+                <div className="p-3 border-hairline bg-mono-bgAlt text-xs font-mono text-mono-ink flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{submitError || error}</span>
+                </div>
+              )}
+
+              {/* Progress Stage Tracker */}
+              {(isProcessing || isSubmitting) && (
+                <div className="pt-4 border-t-hairline">
+                  <StageStepper
+                    stages={STAGES}
+                    currentStageId={stage || "RESOLVING"}
+                    progressPercent={progress}
+                    isCompleted={isCompleted}
+                    isFailed={isFailed}
+                  />
+                  {message && (
+                    <p className="mt-2 font-mono text-[11px] text-mono-inkMuted text-center">
+                      {message}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Action Button */}
+              <div className="pt-4 border-t-hairline flex items-center justify-between">
+                <span className="font-mono text-[11px] text-mono-inkMuted">
+                  HARMONIC ALIGNMENT: 2-STEM COLLISION
+                </span>
                 <Button
                   type="submit"
-                  size="lg"
-                  isLoading={isSubmitting}
-                  className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white shadow-apple"
-                >
-                  <Layers className="w-4 h-4" /> Render AI Mashup Mixdown
-                </Button>
-              </form>
-            </Card>
-          )}
-
-          {/* Live SSE Real-Time Progress */}
-          {isProcessing && (
-            <Card variant="glass" className="w-full p-8 text-center flex flex-col items-center gap-6 animate-in fade-in">
-              <div className="flex items-center gap-2 text-rose-400">
-                <Sparkles className="w-5 h-5 animate-spin" />
-                <h3 className="text-lg font-bold text-white">
-                  Rendering AI Mashup Mixdown
-                </h3>
-              </div>
-
-              <ProgressRing progress={progress} size={140} strokeWidth={10} color="#F43F5E" />
-
-              <p className="text-sm font-medium text-neutral-300 max-w-md">
-                {message || "Isolating stems, tuning Camelot key, and time-stretching beats..."}
-              </p>
-
-              <StageStepper
-                stages={stagesList}
-                currentStageId={stage}
-                isCompleted={isCompleted}
-                isFailed={isFailed}
-              />
-            </Card>
-          )}
-
-          {/* Completed Mashup Player */}
-          {isCompleted && completedAsset && (
-            <Card variant="glass" className="w-full p-8 flex flex-col gap-6 animate-in fade-in shadow-apple">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-400 flex items-center justify-center font-bold">
-                    <Flame className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white">
-                      {completedAsset.name}
-                    </h3>
-                    <p className="text-xs text-neutral-400 font-mono">
-                      Target -14 LUFS Master • Format: {completedAsset.format?.toUpperCase()}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    href={completedAsset.filePath}
-                    download
-                    size="sm"
-                    className="px-4 py-2 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Download Master
-                  </Button>
-                  <Button variant="glass" size="sm" onClick={reset} className="text-xs">
-                    <RotateCcw className="w-3.5 h-3.5 mr-1" /> Create Another
-                  </Button>
-                </div>
-              </div>
-
-              <audio
-                ref={audioRef}
-                src={completedAsset.filePath}
-                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-                onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-                onEnded={() => setIsPlaying(false)}
-              />
-
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between text-xs font-mono text-neutral-400">
-                  <span>{formatDuration(currentTime)}</span>
-                  <span>{formatDuration(duration)}</span>
-                </div>
-
-                <WaveformVisualizer
-                  waveformData={completedAsset.waveformData}
-                  currentTime={currentTime}
-                  duration={duration || 180}
-                  onSeek={(time) => {
-                    if (audioRef.current) {
-                      audioRef.current.currentTime = time;
-                      setCurrentTime(time);
-                    }
-                  }}
-                  accentColor="#F43F5E"
-                  height={36}
-                />
-              </div>
-
-              {/* Transport Bar */}
-              <div className="flex items-center justify-center gap-4 pt-2 border-t border-white/10">
-                <Button
                   variant="primary"
-                  onClick={() => {
-                    if (!audioRef.current) return;
-                    if (isPlaying) {
-                      audioRef.current.pause();
-                      setIsPlaying(false);
-                    } else {
-                      audioRef.current.play().catch(() => {});
-                      setIsPlaying(true);
-                    }
-                  }}
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center bg-rose-600 hover:bg-rose-700 text-white shadow-apple"
+                  pill={false}
+                  isLoading={isSubmitting || isProcessing}
+                  disabled={isSubmitting || isProcessing}
+                  className="px-6 h-10 font-mono font-bold text-xs uppercase"
                 >
-                  {isPlaying ? (
-                    <Pause className="w-5 h-5 fill-current" />
-                  ) : (
-                    <Play className="w-5 h-5 fill-current ml-0.5" />
-                  )}
+                  {isProcessing ? "Rendering Mashup..." : "Render Mashup"}
                 </Button>
               </div>
-            </Card>
-          )}
-        </div>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export default function MashupCreatorPage() {
+export default function MashupPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[50vh]">
-          <div className="w-8 h-8 rounded-full border-2 border-rose-500 border-t-transparent animate-spin" />
-        </div>
-      }
-    >
-      <MashupCreatorContent />
+    <Suspense fallback={<div className="p-12 text-center font-mono text-xs text-mono-inkMuted">Loading Studio...</div>}>
+      <MashupContent />
     </Suspense>
   );
 }

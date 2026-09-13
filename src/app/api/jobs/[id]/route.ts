@@ -11,7 +11,15 @@ export async function GET(
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
-    return NextResponse.json({ job });
+    return NextResponse.json({
+      job,
+      chordTimeline: (job as any).chordTimeline,
+      sections: (job as any).sections || [],
+      originalKey: (job as any).originalKey || (job as any).key,
+      bpm: (job as any).bpm,
+      key: (job as any).key,
+      detectedVocabulary: (job as any).detectedVocabulary || [],
+    });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to fetch job";
     return NextResponse.json({ error: errorMsg }, { status: 500 });

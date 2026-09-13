@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useRef, useEffect } from "react";
+import React, { createContext, useContext, useState, useRef } from "react";
 import {
   Play,
   Pause,
@@ -9,7 +9,6 @@ import {
   Volume2,
   VolumeX,
   Repeat,
-  Shuffle,
   Music,
   X,
 } from "lucide-react";
@@ -130,18 +129,18 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({
       />
 
       {currentTrack && (
-        <div className="fixed bottom-4 left-4 right-4 max-w-4xl mx-auto z-50 animate-in slide-in-from-bottom-5 duration-300">
-          <div className="rounded-3xl backdrop-blur-2xl bg-white/90 dark:bg-[#1C1C1E]/95 border border-neutral-200/80 dark:border-white/10 shadow-2xl p-3.5 flex items-center justify-between gap-4">
+        <div className="fixed bottom-3 left-3 right-3 max-w-4xl mx-auto z-50 font-mono">
+          <div className="bg-[var(--bg-primary)] border border-[var(--line)] p-3 flex items-center justify-between gap-3 shadow-sm">
             {/* Track Info */}
-            <div className="flex items-center gap-3 min-w-0 w-1/4">
-              <div className="w-11 h-11 rounded-2xl bg-apple-blue/10 dark:bg-apple-blue/20 text-apple-blue flex items-center justify-center shrink-0 shadow-sm">
-                <Music className="w-5 h-5" />
+            <div className="flex items-center gap-2.5 min-w-0 w-1/4">
+              <div className="w-8 h-8 border border-[var(--line)] bg-[var(--bg-secondary)] flex items-center justify-center text-[var(--ink-primary)] shrink-0">
+                <Music className="w-4 h-4 stroke-[1.5]" />
               </div>
               <div className="min-w-0">
-                <h5 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+                <h5 className="text-xs font-bold text-[var(--ink-primary)] truncate">
                   {currentTrack.title}
                 </h5>
-                <p className="text-xs text-neutral-400 truncate">
+                <p className="text-[10px] text-[var(--ink-secondary)] truncate">
                   {currentTrack.artist || "SplitStream Playback"}
                 </p>
               </div>
@@ -149,40 +148,42 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({
 
             {/* Controls & Progress */}
             <div className="flex-1 flex flex-col items-center max-w-md">
-              <div className="flex items-center gap-3 mb-1">
+              <div className="flex items-center gap-2 mb-1">
                 <button
                   onClick={() => setIsLooping(!isLooping)}
-                  className={`p-1.5 rounded-full transition-colors ${
-                    isLooping ? "text-apple-blue" : "text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                  className={`p-1 border transition-colors cursor-pointer ${
+                    isLooping
+                      ? "bg-[var(--ink-primary)] text-[var(--bg-primary)] border-[var(--ink-primary)]"
+                      : "border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
                   }`}
                 >
-                  <Repeat className="w-4 h-4" />
+                  <Repeat className="w-3 h-3 stroke-[1.5]" />
                 </button>
                 <button
                   onClick={() => handleSeek(Math.max(0, currentTime - 5))}
-                  className="p-1.5 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                  className="p-1 border border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer"
                 >
-                  <SkipBack className="w-4 h-4" />
+                  <SkipBack className="w-3 h-3 stroke-[1.5]" />
                 </button>
                 <button
                   onClick={togglePlay}
-                  className="w-9 h-9 rounded-full bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all"
+                  className="w-7 h-7 border border-[var(--ink-primary)] bg-[var(--ink-primary)] text-[var(--bg-primary)] flex items-center justify-center cursor-pointer"
                 >
                   {isPlaying ? (
-                    <Pause className="w-4 h-4 fill-current" />
+                    <Pause className="w-3.5 h-3.5 fill-current" />
                   ) : (
-                    <Play className="w-4 h-4 fill-current ml-0.5" />
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                   )}
                 </button>
                 <button
                   onClick={() => handleSeek(Math.min(duration, currentTime + 5))}
-                  className="p-1.5 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                  className="p-1 border border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer"
                 >
-                  <SkipForward className="w-4 h-4" />
+                  <SkipForward className="w-3 h-3 stroke-[1.5]" />
                 </button>
               </div>
 
-              <div className="w-full flex items-center gap-2 text-[11px] font-mono text-neutral-400">
+              <div className="w-full flex items-center gap-2 text-[10px] text-[var(--ink-secondary)]">
                 <span>{formatDuration(currentTime)}</span>
                 <div className="flex-1">
                   <Slider
@@ -190,7 +191,6 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({
                     min={0}
                     max={duration || 100}
                     onChange={handleSeek}
-                    accentColor="#0071E3"
                   />
                 </div>
                 <span>{formatDuration(duration)}</span>
@@ -198,8 +198,8 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({
             </div>
 
             {/* Volume & Close */}
-            <div className="flex items-center gap-3 justify-end w-1/4">
-              <div className="hidden sm:flex items-center gap-2">
+            <div className="flex items-center gap-2 justify-end w-1/4">
+              <div className="hidden sm:flex items-center gap-1.5">
                 <button
                   onClick={() => {
                     if (audioRef.current) {
@@ -208,9 +208,9 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({
                       audioRef.current.muted = next;
                     }
                   }}
-                  className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                  className="text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer"
                 >
-                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
                 </button>
                 <div className="w-16">
                   <Slider
@@ -229,9 +229,9 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({
 
               <button
                 onClick={closePlayer}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                className="p-1 border border-[var(--line)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer ml-1"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5 stroke-[1.5]" />
               </button>
             </div>
           </div>

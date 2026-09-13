@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Play,
   Pause,
@@ -8,125 +8,72 @@ import {
   Volume2,
   VolumeX,
   Download,
-  Sliders,
-  ChevronDown,
-  ChevronUp,
-  Layers,
-  Sparkles,
-  Music,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { Slider } from "@/components/ui/Slider";
-import { Knob } from "@/components/ui/Knob";
 import { WaveformVisualizer } from "./WaveformVisualizer";
-import { VUMeter } from "./VUMeter";
 import { formatDuration, formatBytes } from "@/lib/utils";
 
 export interface StemTrack {
   id: string;
   name: string;
-  kind:
-    | "STEM_VOCALS"
-    | "STEM_INSTRUMENTS"
-    | "STEM_BASS"
-    | "STEM_DRUMS"
-    | "STEM_OTHER"
-    | "STEM_PIANO"
-    | "STEM_GUITAR"
-    | "STEM_INSTRUMENTAL";
+  kind: "STEM_VOCALS" | "STEM_INSTRUMENT";
   url: string;
-  color?: string;
   waveformData?: number[];
   sizeBytes?: number;
   format?: string;
-  confidenceScore?: number;
   clarityPercent?: number;
+  qualityLabel?: string;
 }
 
 export interface StemMixerProps {
   tracks: StemTrack[];
   title?: string;
+  qualityLabel?: string;
+  engine?: "demucs" | "dsp-fallback";
   className?: string;
 }
 
-interface TrackControlState {
+interface ChannelState {
   volume: number; // 0 to 1
-  pan: number; // -100 to +100
   isMuted: boolean;
   isSolo: boolean;
 }
 
 export const StemMixer: React.FC<StemMixerProps> = ({
   tracks,
-  title = "Stem Separation Mix",
+  title = "Vocal / Instrument Separation",
+  qualityLabel,
+  engine,
   className,
 }) => {
-  // Master Synced Engine State
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [masterVolume, setMasterVolume] = useState(1);
   const [isMasterMuted, setIsMasterMuted] = useState(false);
 
-  // Advanced stems toggle state (default: false -> 3-stem view)
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  // Dedicated Single-Purpose Preview Engine State (Decoupled from Master Engine)
+  // Dedicated preview track
   const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Track control states keyed by track id
-  const [trackStates, setTrackStates] = useState<Record<string, TrackControlState>>(() => {
-    const init: Record<string, TrackControlState> = {};
-    tracks.forEach((t) => {
-      init[t.id] = {
-        volume: 0.85,
-        pan: 0,
-        isMuted: false,
-        isSolo: false,
-      };
-    });
-    return init;
+  // Identify the two stems
+  const vocalsTrack = tracks.find((t) => t.kind === "STEM_VOCALS") || tracks[0];
+  const instrumentTrack = tracks.find((t) => t.kind === "STEM_INSTRUMENT") || tracks[1];
+
+  const [channelStates, setChannelStates] = useState<Record<string, ChannelState>>({
+    vocals: { volume: 0.85, isMuted: false, isSolo: false },
+    instrument: { volume: 0.85, isMuted: false, isSolo: false },
   });
 
-  // Master synchronized multi-track audio elements
-  const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
+  const vocalsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const instrumentAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Split tracks into Primary (3-Stem Default: Vocals, Instruments, Bass) and Advanced (Drums, Other, Piano, Guitar, Karaoke)
-  const { primaryTracks, advancedTracks } = useMemo(() => {
-    const hasInstrumentsStem = tracks.some((t) => t.kind === "STEM_INSTRUMENTS");
+  const hasAnySolo = channelStates.vocals?.isSolo || channelStates.instrument?.isSolo;
 
-    if (hasInstrumentsStem) {
-      const primary = tracks.filter((t) =>
-        ["STEM_VOCALS", "STEM_INSTRUMENTS", "STEM_BASS"].includes(t.kind)
-      );
-      const advanced = tracks.filter(
-        (t) => !["STEM_VOCALS", "STEM_INSTRUMENTS", "STEM_BASS"].includes(t.kind)
-      );
-      return { primaryTracks: primary, advancedTracks: advanced };
-    }
-
-    // Fallback if derived instruments stem was not generated (show first 3 or all)
-    const primary = tracks.filter((t) =>
-      ["STEM_VOCALS", "STEM_DRUMS", "STEM_BASS"].includes(t.kind)
-    );
-    const advanced = tracks.filter(
-      (t) => !["STEM_VOCALS", "STEM_DRUMS", "STEM_BASS"].includes(t.kind)
-    );
-    return {
-      primaryTracks: primary.length > 0 ? primary : tracks.slice(0, 3),
-      advancedTracks: primary.length > 0 ? advanced : tracks.slice(3),
-    };
-  }, [tracks]);
-
-  // Check if any track has Solo active
-  const hasAnySolo = Object.values(trackStates).some((s) => s.isSolo);
-
-  // Master "Play Mix" Handler
+  // Master Play/Pause
   const togglePlay = () => {
-    // Pressing master "Play Mix" stops any active individual stem preview
     if (previewAudioRef.current && (previewTrackId || isPreviewPlaying)) {
       previewAudioRef.current.pause();
       setIsPreviewPlaying(false);
@@ -134,33 +81,37 @@ export const StemMixer: React.FC<StemMixerProps> = ({
     }
 
     if (isPlaying) {
-      Object.values(audioRefs.current).forEach((audio) => audio.pause());
+      vocalsAudioRef.current?.pause();
+      instrumentAudioRef.current?.pause();
       setIsPlaying(false);
     } else {
-      Object.values(audioRefs.current).forEach((audio) => {
-        audio.currentTime = currentTime;
-        audio.play().catch(() => {});
-      });
+      if (vocalsAudioRef.current) {
+        vocalsAudioRef.current.currentTime = currentTime;
+        vocalsAudioRef.current.play().catch(() => {});
+      }
+      if (instrumentAudioRef.current) {
+        instrumentAudioRef.current.currentTime = currentTime;
+        instrumentAudioRef.current.play().catch(() => {});
+      }
       setIsPlaying(true);
     }
   };
 
-  // Dedicated Individual Stem Isolated Preview Handler
+  // Preview individual stem
   const togglePreview = (track: StemTrack) => {
     const previewEl = previewAudioRef.current;
     if (!previewEl) return;
 
-    // If this exact track is currently playing in preview -> Pause it
     if (previewTrackId === track.id && isPreviewPlaying) {
       previewEl.pause();
       setIsPreviewPlaying(false);
       return;
     }
 
-    // If this exact track was loaded and paused -> Resume it
     if (previewTrackId === track.id && !isPreviewPlaying) {
       if (isPlaying) {
-        Object.values(audioRefs.current).forEach((a) => a.pause());
+        vocalsAudioRef.current?.pause();
+        instrumentAudioRef.current?.pause();
         setIsPlaying(false);
       }
       previewEl.volume = isMasterMuted ? 0 : masterVolume;
@@ -169,17 +120,13 @@ export const StemMixer: React.FC<StemMixerProps> = ({
       return;
     }
 
-    // Start preview for this row:
-    // 1. Stop master engine (if playing)
     if (isPlaying) {
-      Object.values(audioRefs.current).forEach((a) => a.pause());
+      vocalsAudioRef.current?.pause();
+      instrumentAudioRef.current?.pause();
       setIsPlaying(false);
     }
 
-    // 2. Stop any previous stem preview
     previewEl.pause();
-
-    // 3. Load ONLY this stem into the dedicated preview element (ignoring Solo/Mute)
     previewEl.src = track.url;
     previewEl.currentTime = currentTime;
     previewEl.volume = isMasterMuted ? 0 : masterVolume;
@@ -191,247 +138,151 @@ export const StemMixer: React.FC<StemMixerProps> = ({
 
   const handleSeek = (time: number) => {
     setCurrentTime(time);
-    // Update all master synced audio elements
-    Object.values(audioRefs.current).forEach((audio) => {
-      audio.currentTime = time;
-    });
-    // Update dedicated preview element
-    if (previewAudioRef.current) {
-      previewAudioRef.current.currentTime = time;
-    }
+    if (vocalsAudioRef.current) vocalsAudioRef.current.currentTime = time;
+    if (instrumentAudioRef.current) instrumentAudioRef.current.currentTime = time;
+    if (previewAudioRef.current) previewAudioRef.current.currentTime = time;
   };
 
-  const handleRestart = () => {
-    handleSeek(0);
-  };
-
-  // Master engine time tracking
-  const handleMasterTimeUpdate = (e: React.SyntheticEvent<HTMLAudioElement>) => {
-    if (isPlaying) {
-      const target = e.currentTarget;
-      setCurrentTime(target.currentTime);
-      if (target.duration && !isNaN(target.duration) && duration === 0) {
-        setDuration(target.duration);
-      }
-    }
-  };
-
-  const updateTrackState = (id: string, updates: Partial<TrackControlState>) => {
-    setTrackStates((prev) => ({
+  const updateChannel = (key: "vocals" | "instrument", updates: Partial<ChannelState>) => {
+    setChannelStates((prev) => ({
       ...prev,
-      [id]: { ...prev[id], ...updates },
+      [key]: { ...prev[key], ...updates },
     }));
   };
 
-  // Apply master track gains, mutes, and solo to master audio elements
+  // Volume computation & application
   useEffect(() => {
-    tracks.forEach((track) => {
-      const audio = audioRefs.current[track.id];
-      const state = trackStates[track.id];
+    const applyVolume = (
+      audio: HTMLAudioElement | null,
+      state: ChannelState | undefined
+    ) => {
       if (!audio || !state) return;
-
-      let effectiveVolume = state.volume * (isMasterMuted ? 0 : masterVolume);
-
+      let vol = state.volume * (isMasterMuted ? 0 : masterVolume);
       if (state.isMuted) {
-        effectiveVolume = 0;
+        vol = 0;
       } else if (hasAnySolo) {
-        effectiveVolume = state.isSolo ? effectiveVolume : 0;
+        vol = state.isSolo ? vol : 0;
       }
-
-      audio.volume = Math.min(1, Math.max(0, effectiveVolume));
-    });
-  }, [trackStates, masterVolume, isMasterMuted, hasAnySolo, tracks]);
-
-  // Sync master volume to preview audio element
-  useEffect(() => {
-    if (previewAudioRef.current) {
-      previewAudioRef.current.volume = isMasterMuted ? 0 : masterVolume;
-    }
-  }, [masterVolume, isMasterMuted]);
-
-  // Color mapping for stem kinds
-  const getStemColor = (kind: string) => {
-    switch (kind) {
-      case "STEM_VOCALS":
-        return "#6366F1"; // Indigo
-      case "STEM_INSTRUMENTS":
-        return "#06B6D4"; // Electric Cyan (Combined Stems)
-      case "STEM_BASS":
-        return "#10B981"; // Emerald
-      case "STEM_DRUMS":
-        return "#F43F5E"; // Coral Rose
-      case "STEM_OTHER":
-        return "#F59E0B"; // Amber
-      case "STEM_PIANO":
-        return "#8B5CF6"; // Purple
-      case "STEM_GUITAR":
-        return "#F97316"; // Vibrant Orange
-      case "STEM_INSTRUMENTAL":
-        return "#A855F7"; // Karaoke Purple
-      default:
-        return "#0071E3";
-    }
-  };
-
-  // Channel row renderer with Calm Precision breathing room
-  const renderTrackRow = (track: StemTrack, isAdvanced = false) => {
-    const state = trackStates[track.id] || {
-      volume: 0.85,
-      pan: 0,
-      isMuted: false,
-      isSolo: false,
+      audio.volume = Math.min(1, Math.max(0, vol));
     };
-    const trackColor = getStemColor(track.kind);
+
+    applyVolume(vocalsAudioRef.current, channelStates.vocals);
+    applyVolume(instrumentAudioRef.current, channelStates.instrument);
+  }, [channelStates, masterVolume, isMasterMuted, hasAnySolo]);
+
+  const renderChannelStrip = (
+    key: "vocals" | "instrument",
+    track?: StemTrack,
+    label: string = "Channel"
+  ) => {
+    if (!track) return null;
+    const state = channelStates[key];
     const isThisPreviewing = previewTrackId === track.id && isPreviewPlaying;
 
     return (
-      <div
-        key={track.id}
-        className={`py-5 px-4 sm:px-6 rounded-2xl flex flex-col md:flex-row items-start md:items-center gap-4 sm:gap-6 transition-all duration-200 ${
-          isAdvanced
-            ? "bg-white/[0.02] dark:bg-white/[0.02] border border-white/5 my-1.5"
-            : "bg-white/[0.04] dark:bg-white/[0.04] border border-white/10 my-2"
-        }`}
-      >
-        {/* Stem Label & Channel VU Meters */}
-        <div className="w-full md:w-52 flex items-center justify-between md:justify-start gap-3 shrink-0">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-3.5 h-3.5 rounded-full shadow-md shrink-0"
-              style={{ backgroundColor: trackColor }}
-            />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="text-sm font-extrabold text-white tracking-tight truncate">
-                  {track.name}
-                </h4>
-                {track.clarityPercent !== undefined && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                    {track.clarityPercent}%
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-neutral-400 uppercase tracking-wider font-mono mt-0.5">
-                {track.format?.toUpperCase() || "MP3"}
-                {track.sizeBytes ? ` • ${formatBytes(track.sizeBytes)}` : ""}
-              </p>
-            </div>
+      <div className="flex-1 flex flex-col items-center p-6 border-hairline bg-mono-bg rounded-sm">
+        {/* Header */}
+        <div className="w-full flex items-center justify-between pb-3 mb-4 border-b-hairline">
+          <div>
+            <h4 className="font-mono text-xs font-bold tracking-widest uppercase text-mono-ink">
+              {label}
+            </h4>
+            <p className="text-[11px] font-mono text-mono-inkMuted mt-0.5">
+              {track.format?.toUpperCase() || "MP3"}
+              {track.sizeBytes ? ` • ${formatBytes(track.sizeBytes)}` : ""}
+            </p>
           </div>
-
-          <VUMeter
-            isPlaying={
-              (isPlaying && !state.isMuted && (!hasAnySolo || state.isSolo)) ||
-              isThisPreviewing
-            }
-            volume={state.volume}
-            isMuted={
-              isThisPreviewing
-                ? false
-                : state.isMuted || (hasAnySolo && !state.isSolo)
-            }
-            bars={6}
-          />
+          {track.clarityPercent !== undefined && (
+            <span className="font-mono text-[10px] px-2 py-0.5 border-hairline text-mono-ink">
+              {track.clarityPercent}%
+            </span>
+          )}
         </div>
 
-        {/* Waveform Track with Height and Breathing Room */}
-        <div className="flex-1 w-full min-w-0">
+        {/* Minimal Waveform */}
+        <div className="w-full mb-6 px-1">
           <WaveformVisualizer
             waveformData={track.waveformData}
             currentTime={currentTime}
             duration={duration || 180}
             onSeek={handleSeek}
-            accentColor={trackColor}
-            height={36}
+            height={32}
           />
         </div>
 
-        {/* Track Controls: Individual Play, Solo, Mute, Pan Knob, Fader, Direct Download */}
-        <div className="flex items-center gap-3 sm:gap-4 w-full md:w-auto justify-between md:justify-end shrink-0">
+        {/* Linear Vertical Fader */}
+        <div className="my-2 flex flex-col items-center">
+          <Slider
+            orientation="vertical"
+            value={state.volume * 100}
+            min={0}
+            max={100}
+            showValue
+            valueFormatter={(v) => `${Math.round(v)}%`}
+            onChange={(val) => updateChannel(key, { volume: val / 100 })}
+            className="h-44"
+          />
+        </div>
+
+        {/* Action Controls: Play in Isolation, Solo, Mute, Download */}
+        <div className="w-full flex items-center justify-between pt-6 mt-4 border-t-hairline">
           <div className="flex items-center gap-1.5">
-            {/* Individual Stem Isolated Play / Pause Button */}
+            {/* Play in Isolation */}
             <button
               type="button"
               onClick={() => togglePreview(track)}
-              title={
+              title={isThisPreviewing ? `Pause ${label}` : `Play ${label} solo`}
+              className={`w-8 h-8 rounded-sm border-hairline flex items-center justify-center transition-colors cursor-pointer ${
                 isThisPreviewing
-                  ? `Pause ${track.name} preview`
-                  : `Play ${track.name} in isolation`
-              }
-              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-                isThisPreviewing
-                  ? "bg-apple-blue text-white shadow-lg ring-2 ring-apple-blue/40 scale-105"
-                  : "bg-white/10 text-neutral-300 hover:text-white hover:bg-white/20 active:scale-95"
+                  ? "bg-mono-ink text-mono-bg"
+                  : "bg-mono-bg text-mono-ink hover:bg-mono-bgAlt"
               }`}
             >
               {isThisPreviewing ? (
-                <Pause className="w-4 h-4 fill-current" />
+                <Pause className="w-3.5 h-3.5 fill-current" />
               ) : (
-                <Play className="w-4 h-4 fill-current ml-0.5" />
+                <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
               )}
             </button>
 
-            {/* Solo Button */}
+            {/* Solo */}
             <button
               type="button"
-              onClick={() => updateTrackState(track.id, { isSolo: !state.isSolo })}
-              title="Solo this track"
-              className={`w-8 h-8 rounded-xl text-xs font-black transition-all cursor-pointer ${
+              onClick={() => updateChannel(key, { isSolo: !state.isSolo })}
+              title="Solo this channel"
+              className={`w-8 h-8 rounded-sm text-xs font-mono font-bold transition-colors cursor-pointer border-hairline ${
                 state.isSolo
-                  ? "bg-amber-400 text-black shadow-md scale-105 hover:bg-amber-300"
-                  : "bg-white/10 text-neutral-400 hover:text-white hover:bg-white/20 active:scale-95"
+                  ? "bg-mono-ink text-mono-bg"
+                  : "bg-mono-bg text-mono-inkMuted hover:text-mono-ink hover:bg-mono-bgAlt"
               }`}
             >
               S
             </button>
 
-            {/* Mute Button */}
+            {/* Mute */}
             <button
               type="button"
-              onClick={() => updateTrackState(track.id, { isMuted: !state.isMuted })}
-              title="Mute this track"
-              className={`w-8 h-8 rounded-xl text-xs font-black transition-all cursor-pointer ${
+              onClick={() => updateChannel(key, { isMuted: !state.isMuted })}
+              title="Mute this channel"
+              className={`w-8 h-8 rounded-sm text-xs font-mono font-bold transition-colors cursor-pointer border-hairline ${
                 state.isMuted
-                  ? "bg-rose-500 text-white shadow-md scale-105 hover:bg-rose-600"
-                  : "bg-white/10 text-neutral-400 hover:text-white hover:bg-white/20 active:scale-95"
+                  ? "bg-mono-ink text-mono-bg"
+                  : "bg-mono-bg text-mono-inkMuted hover:text-mono-ink hover:bg-mono-bgAlt"
               }`}
             >
               M
             </button>
           </div>
 
-          {/* Pan Knob */}
-          <Knob
-            value={state.pan}
-            min={-100}
-            max={100}
-            size={38}
-            label="PAN"
-            accentColor={trackColor}
-            onChange={(val) => updateTrackState(track.id, { pan: val })}
-          />
-
-          {/* Volume Fader */}
-          <div className="w-24 sm:w-28 flex flex-col gap-1">
-            <Slider
-              value={state.volume * 100}
-              min={0}
-              max={100}
-              accentColor={trackColor}
-              onChange={(val) => updateTrackState(track.id, { volume: val / 100 })}
-            />
-            <span className="text-[10px] text-neutral-400 font-mono text-right">
-              {Math.round(state.volume * 100)}%
-            </span>
-          </div>
-
-          {/* Direct Stem Download Button */}
+          {/* Download button */}
           <a
             href={track.url}
             download={`${track.name.toLowerCase().replace(/\s+/g, "_")}.${track.format || "mp3"}`}
-            className="p-2.5 rounded-xl bg-white/10 text-neutral-300 hover:bg-apple-blue hover:text-white transition-all shadow-sm active:scale-95 cursor-pointer"
+            className="h-8 px-3 rounded-sm border-hairline flex items-center gap-1.5 text-[11px] font-mono hover:bg-mono-ink hover:text-mono-bg transition-colors"
             title={`Download ${track.name}`}
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-3.5 h-3.5 stroke-[1.5]" />
+            <span>EXPORT</span>
           </a>
         </div>
       </div>
@@ -439,104 +290,114 @@ export const StemMixer: React.FC<StemMixerProps> = ({
   };
 
   return (
-    <div className={`w-full rounded-3xl backdrop-blur-2xl bg-[#121214]/90 border border-white/10 shadow-apple dark:shadow-apple-dark p-6 sm:p-8 mode-b-precision ${className || ""}`}>
-      {/* Dedicated Single-Purpose Preview Audio Node (used ONLY by individual stem Play buttons) */}
+    <div className={`w-full border-hairline bg-mono-bg p-6 sm:p-8 rounded-sm text-mono-ink ${className || ""}`}>
+      {/* Hidden audio tags */}
       <audio
         ref={previewAudioRef}
         preload="none"
         onTimeUpdate={(e) => {
-          if (isPreviewPlaying) {
-            setCurrentTime(e.currentTarget.currentTime);
-            if (e.currentTarget.duration && !isNaN(e.currentTarget.duration) && duration === 0) {
-              setDuration(e.currentTarget.duration);
-            }
-          }
+          if (isPreviewPlaying) setCurrentTime(e.currentTarget.currentTime);
         }}
         onEnded={() => {
           setIsPreviewPlaying(false);
           setPreviewTrackId(null);
         }}
-        onError={() => {
-          setIsPreviewPlaying(false);
-          setPreviewTrackId(null);
-        }}
       />
 
-      {/* Master multi-track synchronized audio elements (used ONLY by "Play Mix") */}
-      {tracks.map((t, idx) => (
+      {vocalsTrack && (
         <audio
-          key={t.id}
-          ref={(el) => {
-            if (el) audioRefs.current[t.id] = el;
-          }}
-          src={t.url}
+          ref={vocalsAudioRef}
+          src={vocalsTrack.url}
           preload="auto"
-          onTimeUpdate={idx === 0 ? handleMasterTimeUpdate : undefined}
-          onEnded={() => {
-            if (idx === 0) setIsPlaying(false);
+          onTimeUpdate={(e) => {
+            if (isPlaying) {
+              setCurrentTime(e.currentTarget.currentTime);
+              if (e.currentTarget.duration && !isNaN(e.currentTarget.duration) && duration === 0) {
+                setDuration(e.currentTarget.duration);
+              }
+            }
           }}
+          onEnded={() => setIsPlaying(false)}
         />
-      ))}
+      )}
+
+      {instrumentTrack && (
+        <audio
+          ref={instrumentAudioRef}
+          src={instrumentTrack.url}
+          preload="auto"
+        />
+      )}
 
       {/* Header & Master Controls */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-white/10">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b-hairline">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              <Sliders className="w-4 h-4" />
-            </span>
-            <h3 className="text-xl font-black text-white tracking-tight">
+            <h3 className="text-lg font-bold tracking-tight uppercase font-mono">
               {title}
             </h3>
+            {qualityLabel && (
+              <span
+                className={`text-[10px] font-mono px-2 py-0.5 border-hairline uppercase tracking-wider ${
+                  engine === "demucs" || qualityLabel.includes("Studio")
+                    ? "bg-mono-ink text-mono-bg"
+                    : "bg-mono-bgAlt text-mono-ink"
+                }`}
+              >
+                {qualityLabel}
+              </span>
+            )}
           </div>
-          <p className="text-xs text-neutral-400 mt-1 font-mono">
-            3-Stem Simple View • Vocals, Instruments & Bass Separation
+          <p className="text-xs text-mono-inkMuted font-mono mt-0.5">
+            2-Track Separation • Vocals & Instrument Only
           </p>
         </div>
 
-        {/* Master Transport & Volume Bar */}
+        {/* Master Transport */}
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
           <div className="flex items-center gap-2">
             <Button
-              variant="glass"
+              variant="outline"
               size="icon"
-              onClick={handleRestart}
-              title="Restart Mix"
-              className="h-10 w-10 text-neutral-300 hover:text-white"
+              pill={false}
+              onClick={() => handleSeek(0)}
+              title="Restart"
+              className="h-9 w-9"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-3.5 h-3.5 stroke-[1.5]" />
             </Button>
             <Button
               variant="primary"
+              pill={false}
               onClick={togglePlay}
-              className="px-6 py-2.5 h-10 text-xs font-bold flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-apple"
+              className="px-5 h-9 text-xs font-mono font-bold flex items-center gap-2"
             >
               {isPlaying ? (
                 <>
-                  <Pause className="w-4 h-4 fill-current" /> Pause Mix
+                  <Pause className="w-3.5 h-3.5 fill-current" /> PAUSE MIX
                 </>
               ) : (
                 <>
-                  <Play className="w-4 h-4 fill-current ml-0.5" /> Play Mix
+                  <Play className="w-3.5 h-3.5 fill-current ml-0.5" /> PLAY MIX
                 </>
               )}
             </Button>
           </div>
 
-          <div className="flex items-center gap-2.5 border-l border-white/10 pl-3">
+          <div className="flex items-center gap-2 border-l-hairline pl-3">
             <button
               type="button"
               onClick={() => setIsMasterMuted(!isMasterMuted)}
-              className="text-neutral-400 hover:text-white transition-colors cursor-pointer"
+              className="p-1.5 text-mono-inkMuted hover:text-mono-ink transition-colors"
               title={isMasterMuted ? "Unmute Master" : "Mute Master"}
             >
               {isMasterMuted || masterVolume === 0 ? (
-                <VolumeX className="w-4 h-4 text-red-500" />
+                <VolumeX className="w-4 h-4 stroke-[1.5]" />
               ) : (
-                <Volume2 className="w-4 h-4" />
+                <Volume2 className="w-4 h-4 stroke-[1.5]" />
               )}
             </button>
-            <div className="w-20 sm:w-24">
+            <div className="w-20">
               <Slider
                 value={isMasterMuted ? 0 : masterVolume * 100}
                 min={0}
@@ -551,68 +412,26 @@ export const StemMixer: React.FC<StemMixerProps> = ({
         </div>
       </div>
 
-      {/* Master Timeline & Scrub Bar */}
-      <div className="py-5 border-b border-white/10">
-        <div className="flex items-center justify-between text-xs font-mono text-neutral-400 mb-2">
+      {/* Master Timeline Scrub Bar */}
+      <div className="py-4 border-b-hairline">
+        <div className="flex items-center justify-between text-xs font-mono text-mono-inkMuted mb-2">
           <span>{formatDuration(currentTime)}</span>
-          <span className="font-mono text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
-            Master Scrub Timeline
-          </span>
+          <span className="uppercase tracking-widest text-[10px]">MASTER TIMELINE</span>
           <span>{formatDuration(duration)}</span>
         </div>
         <WaveformVisualizer
           currentTime={currentTime}
           duration={duration || 180}
           onSeek={handleSeek}
-          accentColor="#6366F1"
-          height={34}
+          height={32}
         />
       </div>
 
-      {/* 3-Stem Default Channel Rows */}
-      <div className="flex flex-col gap-1.5 mt-4">
-        {primaryTracks.map((track) => renderTrackRow(track, false))}
+      {/* TWO VERTICAL CHANNEL STRIPS ONLY: VOCALS AND INSTRUMENT */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        {renderChannelStrip("vocals", vocalsTrack, "Vocals")}
+        {renderChannelStrip("instrument", instrumentTrack, "Instrument")}
       </div>
-
-      {/* Show Advanced Stems Toggle Button */}
-      {advancedTracks.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-white/10 flex flex-col items-center">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="px-4 py-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-neutral-300 hover:text-white flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
-          >
-            <Layers className="w-3.5 h-3.5 text-indigo-400" />
-            <span>
-              {showAdvanced ? "Hide Advanced Stems" : `Show Advanced Stems (${advancedTracks.length} More)`}
-            </span>
-            {showAdvanced ? (
-              <ChevronUp className="w-3.5 h-3.5 text-neutral-400" />
-            ) : (
-              <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
-            )}
-          </button>
-
-          {/* Smooth Expansion of Advanced Rows (Drums, Other, Piano, Guitar, Instrumental) */}
-          <AnimatePresence initial={false}>
-            {showAdvanced && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full overflow-hidden flex flex-col gap-1.5 mt-3"
-              >
-                <div className="text-[11px] font-mono font-semibold text-neutral-400 px-2 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                  <span>Extended Stem Breakdown</span>
-                  <span className="text-neutral-400">• Individual Layers</span>
-                </div>
-                {advancedTracks.map((track) => renderTrackRow(track, true))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
     </div>
   );
 };

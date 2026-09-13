@@ -51,7 +51,40 @@ export class NeuralTranslationProvider implements TranslationProviderPort {
       }
     }
 
-    // 2. Try High-Quality MyMemory Neural Translation API
+    // 2. High-Fidelity Google Neural MT with native Tamil (ta) and auto-detection support
+    // Documented Choice: Google Translate client endpoint provides complete, fluent translation
+    // for Tamil ('ta') as both source and target, alongside 100+ languages, with automatic source language detection.
+    try {
+      const src = !sourceLanguage || sourceLanguage === "auto" ? "auto" : sourceLanguage.split("-")[0];
+      const tgt = targetLanguage.split("-")[0];
+      const gUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${src}&tl=${tgt}&dt=t&q=${encodeURIComponent(trimmed)}`;
+      const res = await fetch(gUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && Array.isArray(data[0])) {
+          const translated = data[0].map((chunk: any) => chunk[0]).join("");
+          const detected = data[2] || (src !== "auto" ? src : "en");
+          if (translated) {
+            console.log(`[NeuralTranslationProvider] Neural MT translated (${detected} -> ${tgt}): "${translated}"`);
+            return {
+              translatedText: translated,
+              sourceLanguage: detected,
+              targetLanguage: tgt,
+            };
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn("[NeuralTranslationProvider] Neural MT engine note:", err.message);
+    }
+
+    // 3. Try High-Quality MyMemory Neural Translation API
     try {
       const src = sourceLanguage === "auto" ? "en" : sourceLanguage;
       const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(trimmed)}&langpair=${src}|${targetLanguage}`;

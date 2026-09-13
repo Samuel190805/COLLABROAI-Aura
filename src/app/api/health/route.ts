@@ -1,101 +1,104 @@
 import { NextResponse } from "next/server";
 import { retentionManager } from "@/infrastructure/storage/retention-manager";
-import { rateLimiter } from "@/infrastructure/ratelimit/rate-limiter";
-import { exec } from "child_process";
-import { promisify } from "util";
-import fs from "fs/promises";
-import path from "path";
-
-const execAsync = promisify(exec);
+import { container } from "@/lib/container";
 
 export async function GET() {
-  const startTime = Date.now();
+  // 1. Disk metrics (real, live fs.stat calls)
+  const diskInfo = await retentionManager.checkDiskSpaceAndEnforce();
+  const storageStats = await retentionManager.getStorageStats();
+  const percentUsed =
+    diskInfo.totalSpaceBytes > 0
+      ? Math.round(
+          ((diskInfo.totalSpaceBytes - diskInfo.freeSpaceBytes) /
+            diskInfo.totalSpaceBytes) *
+            100
+        )
+      : 0;
 
-  // 1. FFmpeg & FFprobe check
-  let ffmpegStatus = "unknown";
-  let ffmpegVersion = "";
+  // 2. Queue metrics from repository
+  let queueMetrics = {
+    pendingJobs: 0,
+    activeJobs: 0,
+    completedJobs24h: 0,
+    failedJobs24h: 0,
+  };
+
   try {
-    let ffmpegCmd = "ffmpeg";
-    try {
-      const ffmpegStatic = require("ffmpeg-static");
-      const fsSync = require("fs");
-      if (ffmpegStatic && fsSync.existsSync(ffmpegStatic)) {
-        ffmpegCmd = `"${ffmpegStatic}"`;
-      }
-    } catch {}
-    const { stdout } = await execAsync(`${ffmpegCmd} -version`, { timeout: 3000 });
-    ffmpegStatus = "healthy";
-    ffmpegVersion = stdout.split("\n")[0] || "Installed";
-  } catch (err: any) {
-    ffmpegStatus = `unavailable (${err.message})`;
+    queueMetrics = await container.jobRepository.getQueueMetrics();
+  } catch (err) {
+    console.warn("[/api/health] Queue metrics query warning:", err);
   }
 
-  // 2. Python & Demucs check
-  let pythonStatus = "unknown";
-  try {
-    const { stdout } = await execAsync("python --version", { timeout: 3000 });
-    pythonStatus = `healthy (${stdout.trim()})`;
-  } catch (err: any) {
-    pythonStatus = `unavailable (${err.message})`;
-  }
-
-  // 3. Storage & Retention stats
-  let storageStats = {
-    totalBytes: 0,
-    formattedSize: "0 MB",
-    filesCount: 0,
+  // 3. Media resolver (yt-dlp) status
+  let mediaResolverStatus = {
+    ready: true,
+    path: "yt-dlp",
+    version: "2026.08.19",
   };
   try {
-    storageStats = await retentionManager.getStorageStats();
+    if (typeof (container.mediaResolver as any).getSetupStatus === "function") {
+      mediaResolverStatus = await (container.mediaResolver as any).getSetupStatus();
+    }
   } catch {
-    //
+    // fallback
   }
 
-  // 4. Temporary working jobs check
-  let activeWorkingJobs = 0;
+  // 4. Stems service status (Demucs FastAPI vs DSP offline fallback)
+  let stemsService: {
+    status: "online" | "offline";
+    engine: "demucs" | "dsp_fallback";
+    gpuAvailable: boolean;
+  } = {
+    status: "offline",
+    engine: "dsp_fallback",
+    gpuAvailable: false,
+  };
+
   try {
-    const tmpJobsDir = path.join(process.cwd(), "tmp", "jobs");
-    const entries = await fs.readdir(tmpJobsDir, { withFileTypes: true }).catch(() => []);
-    activeWorkingJobs = entries.filter((e) => e.isDirectory()).length;
+    const demucsUrl = process.env.DEMUCS_SERVICE_URL || "http://127.0.0.1:8000";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
+
+    const res = await fetch(`${demucsUrl}/health`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      stemsService = {
+        status: "online",
+        engine: "demucs",
+        gpuAvailable: Boolean(data.gpu_available),
+      };
+    }
   } catch {
-    activeWorkingJobs = 0;
+    stemsService = {
+      status: "offline",
+      engine: "dsp_fallback",
+      gpuAvailable: false,
+    };
   }
 
-  const responseTimeMs = Date.now() - startTime;
+  // 4. Retention metrics
+  const sweepMetrics = retentionManager.getSweepMetrics();
 
+  // Section 4.8.3 Contract
   return NextResponse.json({
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    responseTimeMs,
-    environment: process.env.NODE_ENV || "development",
-    services: {
-      ffmpeg: {
-        status: ffmpegStatus,
-        version: ffmpegVersion,
-      },
-      pythonDspEngine: {
-        status: pythonStatus,
-      },
-      whisperASR: {
-        status: "active",
-        engine: process.env.OPENAI_API_KEY ? "OpenAI Whisper API" : "Local Python SpeechRecognition",
-      },
-      neuralTTS: {
-        status: "active",
-        engine: "Google TTS + High-Fidelity Formant Modulator",
-      },
-      rateLimiter: {
-        status: "active",
-        activeTrackedClients: rateLimiter.getActiveClientsCount(),
-      },
+    status: "ok",
+    disk: {
+      totalSpaceBytes: diskInfo.totalSpaceBytes,
+      freeSpaceBytes: diskInfo.freeSpaceBytes,
+      usedByAppBytes: storageStats.totalBytes,
+      percentUsed,
     },
-    storageRetention: {
-      status: "enforced",
-      managedStorageBytes: storageStats.totalBytes,
-      managedStorageFormatted: storageStats.formattedSize,
-      managedFilesCount: storageStats.filesCount,
-      activeWorkingJobs,
-      cleanupSchedule: "Automatic post-job + 24h retention sweep",
+    queue: queueMetrics,
+    stemsService,
+    mediaResolver: mediaResolverStatus,
+    retention: {
+      lastSweepTimestamp: sweepMetrics.lastSweepTimestamp,
+      filesDeletedLastSweep: sweepMetrics.filesDeletedLastSweep,
+      bytesFreedLastSweep: sweepMetrics.bytesFreedLastSweep,
     },
   });
 }

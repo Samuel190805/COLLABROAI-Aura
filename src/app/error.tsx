@@ -17,30 +17,30 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <div className="min-h-[75vh] flex flex-col items-center justify-center text-center px-4">
-      <div className="w-24 h-24 rounded-3xl bg-red-500/10 dark:bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-500 backdrop-blur-2xl shadow-apple mb-6">
-        <AlertCircle className="w-12 h-12 stroke-[1.5]" />
+    <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 font-mono">
+      <div className="w-16 h-16 border border-[var(--line)] bg-[var(--bg-secondary)] flex items-center justify-center text-[var(--ink-primary)] mb-6">
+        <AlertCircle className="w-8 h-8 stroke-[1.5]" />
       </div>
 
-      <span className="text-xs font-mono font-semibold tracking-widest text-red-500 uppercase mb-2">
+      <span className="text-xs uppercase tracking-widest text-[var(--ink-secondary)] mb-2">
         Execution Exception • 500
       </span>
 
-      <h1 className="text-3xl sm:text-4xl font-extrabold text-neutral-900 dark:text-white tracking-tight mb-3">
-        Audio DSP Pipeline Interrupted
+      <h1 className="text-2xl sm:text-3xl font-bold uppercase tracking-tight text-[var(--ink-primary)] mb-3">
+        Pipeline Interrupted
       </h1>
 
-      <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md mb-8">
+      <p className="text-xs text-[var(--ink-secondary)] max-w-md mb-8">
         {error.message || "An unexpected error occurred during execution. Intermediate files have been safely isolated."}
       </p>
 
       <div className="flex items-center gap-3">
-        <Button variant="primary" onClick={() => reset()} className="flex items-center gap-2 shadow-apple">
-          <RotateCcw className="w-4 h-4" /> Try Again
+        <Button variant="primary" onClick={() => reset()} className="flex items-center gap-2 text-xs">
+          <RotateCcw className="w-3.5 h-3.5 stroke-[1.5]" /> Try Again
         </Button>
         <Link href="/">
-          <Button variant="glass" className="flex items-center gap-2">
-            <Home className="w-4 h-4" /> Return Home
+          <Button variant="secondary" className="flex items-center gap-2 text-xs">
+            <Home className="w-3.5 h-3.5 stroke-[1.5]" /> Return Home
           </Button>
         </Link>
       </div>

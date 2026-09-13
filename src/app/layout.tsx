@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 
@@ -7,13 +7,18 @@ const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-inter",
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
-  title: "SplitStream — Professional AI Audio & Media Suite",
+  title: "SplitStream — Audio & Video Workstation",
   description:
-    "AI source separation, link media downloader, speech-to-speech translation, and local-first audio & video playback.",
+    "Local-first, zero-telemetry audio workstation: 2-stem vocal/instrument separation, link downloader, speech translation, mashup studio, chord detection, and player suite.",
 };
 
 export default function RootLayout({
@@ -22,8 +27,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`dark ${inter.variable}`} suppressHydrationWarning>
-      <body className={`${inter.className} antialiased min-h-screen bg-black text-white selection:bg-apple-blue selection:text-white`}>
+    <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+      <body className="antialiased min-h-screen bg-mono-bg text-mono-ink font-sans selection:bg-mono-ink selection:text-mono-bg">
         <AppShell>{children}</AppShell>
       </body>
     </html>

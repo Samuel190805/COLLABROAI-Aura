@@ -122,7 +122,7 @@ export const SyncedLyricsView: React.FC<SyncedLyricsViewProps> = ({
           className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors"
           title="Regenerate Synced Lyrics"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-apple-blue" : ""}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-white" : ""}`} />
         </button>
       </div>
 
@@ -133,7 +133,7 @@ export const SyncedLyricsView: React.FC<SyncedLyricsViewProps> = ({
       >
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-48 gap-3 text-neutral-400 text-xs">
-            <Loader2 className="w-6 h-6 animate-spin text-apple-blue" />
+            <Loader2 className="w-6 h-6 animate-spin text-white" />
             <span>Transcribing audio & aligning lyrics timeline...</span>
           </div>
         ) : lyrics.length === 0 ? (
@@ -153,10 +153,10 @@ export const SyncedLyricsView: React.FC<SyncedLyricsViewProps> = ({
                 onClick={() => onSeekTo?.(line.start)}
                 className={`p-3 rounded-2xl cursor-pointer transition-all duration-300 ${
                   isActive
-                    ? "bg-apple-blue/15 text-apple-blue text-lg font-bold scale-[1.02] shadow-sm"
+                    ? "bg-white/10 text-white text-lg font-bold scale-[1.02] border border-white/20"
                     : isPassed
-                    ? "text-neutral-400 text-sm hover:text-neutral-700 dark:hover:text-neutral-200"
-                    : "text-neutral-600 dark:text-neutral-300 text-sm hover:text-neutral-900 dark:hover:text-white"
+                    ? "text-neutral-500 text-sm hover:text-neutral-200"
+                    : "text-neutral-400 text-sm hover:text-white"
                 }`}
               >
                 <div className="flex items-baseline justify-between gap-3">

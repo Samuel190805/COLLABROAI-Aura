@@ -25,7 +25,7 @@ export const Tabs: React.FC<TabsProps> = ({
   return (
     <div
       className={cn(
-        "inline-flex p-1 rounded-2xl bg-neutral-200/60 dark:bg-neutral-800/60 backdrop-blur-md border border-neutral-300/40 dark:border-white/5",
+        "inline-flex p-0.5 rounded-full border-hairline bg-mono-bg",
         className
       )}
     >
@@ -37,10 +37,10 @@ export const Tabs: React.FC<TabsProps> = ({
             type="button"
             onClick={() => onChange(tab.id)}
             className={cn(
-              "flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 select-none",
+              "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium tracking-tight transition-colors duration-150 select-none cursor-pointer",
               isActive
-                ? "bg-white dark:bg-[#1C1C1E] text-neutral-900 dark:text-neutral-100 shadow-sm"
-                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+                ? "bg-mono-ink text-mono-bg"
+                : "text-mono-inkMuted hover:text-mono-ink hover:bg-mono-bgAlt"
             )}
           >
             {tab.icon && <span>{tab.icon}</span>}

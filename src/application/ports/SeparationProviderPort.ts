@@ -1,28 +1,21 @@
 export interface SeparationOptions {
-  mode?: "4-stem" | "6-stem";
-  ensemble?: boolean;
   denoise?: boolean;
+  skipPostProcessing?: boolean;
 }
 
 export interface SeparationResult {
   vocalsPath: string;
-  drumsPath: string;
-  bassPath: string;
-  otherPath: string;
-  pianoPath?: string;
-  guitarPath?: string;
-  instrumentalPath?: string;
+  instrumentPath: string;
   stems: {
     STEM_VOCALS: string;
-    STEM_DRUMS: string;
-    STEM_BASS: string;
-    STEM_OTHER: string;
-    STEM_PIANO?: string;
-    STEM_GUITAR?: string;
-    STEM_INSTRUMENTAL?: string;
+    STEM_INSTRUMENT: string;
   };
-  confidenceScores: Record<string, number>;
+  confidenceScores: {
+    vocals: number;
+    instrument: number;
+  };
   modelUsed: string;
+  engine: "demucs" | "dsp-fallback";
   durationSeconds?: number;
 }
 

@@ -42,7 +42,7 @@ export class CreateMashupUseCase {
     private realtimePub: RealtimePublisherPort
   ) {}
 
-  async execute(input: CreateMashupInput): Promise<void> {
+  async execute(input: CreateMashupInput): Promise<{ asset: MediaAsset; masterPath: string }> {
     const {
       jobId,
       userId,
@@ -60,8 +60,8 @@ export class CreateMashupUseCase {
 
     try {
       // 1. RESOLVE SOURCES
-      this.publishProgress(jobId, "RESOLVING", 10, "Fetching and resolving Track A & Track B sources...");
-      await this.jobRepo.updateProgress(jobId, "RESOLVING", 10, "Resolving tracks...");
+      this.publishProgress(jobId, "RESOLVING", 10, "Resolving Track A & Track B sources...");
+      await this.jobRepo.updateProgress(jobId, "RESOLVING", 10, "Resolving audio tracks...");
 
       let audioAPath = trackA.filePath || "";
       if (trackA.type === "url" && trackA.url) {
@@ -87,32 +87,23 @@ export class CreateMashupUseCase {
         throw new Error("Both Track A and Track B audio sources must be provided");
       }
 
-      // 2. SEPARATE STEMS FOR BOTH TRACKS (Demucs v4)
-      this.publishProgress(jobId, "ANALYSIS", 30, "Isolating stems for Track A & Track B...");
-      await this.jobRepo.updateProgress(jobId, "ANALYSIS", 30, "Separating stems...");
+      // 2. RUN 2-STEM SEPARATION ON BOTH TRACKS
+      this.publishProgress(jobId, "ANALYSIS", 30, "Isolating Vocals and Instrument stems for both tracks...");
+      await this.jobRepo.updateProgress(jobId, "ANALYSIS", 30, "Separating 2 stems for tracks...");
 
       const [sepA, sepB] = await Promise.all([
-        this.separationProvider.separate(
-          audioAPath,
-          path.join(workDir, "stemsA"),
-          undefined,
-          { mode: "4-stem" }
-        ),
-        this.separationProvider.separate(
-          audioBPath,
-          path.join(workDir, "stemsB"),
-          undefined,
-          { mode: "4-stem" }
-        ),
+        this.separationProvider.separate(audioAPath, path.join(workDir, "stemsA")),
+        this.separationProvider.separate(audioBPath, path.join(workDir, "stemsB")),
       ]);
 
-      // 3. ANALYZE KEY & TEMPO COMPATIBILITY
-      this.publishProgress(jobId, "MODEL_INFERENCE", 55, "Calculating harmonic Camelot key and BPM alignment...");
-      await this.jobRepo.updateProgress(jobId, "MODEL_INFERENCE", 55, "Aligning pitch & tempo...");
+      // 3. ANALYZE KEY & TEMPO AGAINST INSTRUMENT STEMS (Section 4.4)
+      this.publishProgress(jobId, "MODEL_INFERENCE", 55, "Analyzing harmonic Camelot keys & BPM from Instrument stems...");
+      await this.jobRepo.updateProgress(jobId, "MODEL_INFERENCE", 55, "Analyzing harmonic compatibility...");
 
+      // Analyze against isolated Instrument stems for clean pitch and tempo detection
       const [keyAInfo, keyBInfo] = await Promise.all([
-        this.transcoder.detectKeyAndBpm(audioAPath),
-        this.transcoder.detectKeyAndBpm(audioBPath),
+        this.transcoder.detectKeyAndBpm(sepA.instrumentPath),
+        this.transcoder.detectKeyAndBpm(sepB.instrumentPath),
       ]);
 
       const compatibility = calculateCompatibility(
@@ -124,84 +115,45 @@ export class CreateMashupUseCase {
         keyBInfo.bpm
       );
 
-      const effectiveTargetBpm = targetBpm || keyBInfo.bpm || compatibility.suggestedBpm;
+      // 4. PICK CHOSEN VOCALS AND INSTRUMENT STEMS
+      const vocalsPick = selection.vocalsSource ?? selection.vocalsFrom ?? "A";
+      const instrumentPick = selection.instrumentSource ?? selection.instrumentFrom ?? "B";
 
-      // 4. PREPARE & DSP-TRANSFORM SELECTED STEMS
-      this.publishProgress(jobId, "STEM_RECONSTRUCTION", 75, "Applying pitch shifting and tempo stretching to stems...");
-      await this.jobRepo.updateProgress(jobId, "STEM_RECONSTRUCTION", 75, "Applying DSP filters...");
+      const vocalsSourcePath = vocalsPick === "A" ? sepA.vocalsPath : sepB.vocalsPath;
+      const instrumentSourcePath = instrumentPick === "A" ? sepA.instrumentPath : sepB.instrumentPath;
 
-      const stemsToMix: string[] = [];
+      const vocalKeyInfo = vocalsPick === "A" ? keyAInfo : keyBInfo;
+      const instKeyInfo = instrumentPick === "A" ? keyAInfo : keyBInfo;
 
-      // Process Track A stems
-      const trackAStemsMap: Record<string, string | undefined> = {
-        vocals: sepA.stems.STEM_VOCALS,
-        drums: sepA.stems.STEM_DRUMS,
-        bass: sepA.stems.STEM_BASS,
-        other: sepA.stems.STEM_OTHER,
-      };
+      const effectiveTargetBpm = targetBpm || instKeyInfo.bpm || compatibility.suggestedBpm;
 
-      for (const [stemKey, isSelected] of Object.entries(selection.trackA)) {
-        if (!isSelected) continue;
-        const stemPath = trackAStemsMap[stemKey];
-        if (!stemPath) continue;
+      this.publishProgress(jobId, "STEM_RECONSTRUCTION", 75, "Harmonically aligning Vocals with chosen Instrument...");
+      await this.jobRepo.updateProgress(jobId, "STEM_RECONSTRUCTION", 75, "Applying pitch & tempo alignment...");
 
-        let processedStem = stemPath;
+      let processedVocalPath = vocalsSourcePath;
 
-        // Apply pitch shifting if autoKeyMatch is enabled
-        if (autoKeyMatch && compatibility.pitchShiftSemis !== 0) {
-          const shiftedPath = path.join(workDir, `A_${stemKey}_pitch_shifted.mp3`);
-          await this.transcoder.pitchShift(processedStem, shiftedPath, compatibility.pitchShiftSemis);
-          processedStem = shiftedPath;
-        }
-
-        // Apply tempo stretch if autoTempoMatch is enabled
-        if (autoTempoMatch && keyAInfo.bpm > 0 && effectiveTargetBpm > 0) {
-          const tempoRatio = effectiveTargetBpm / keyAInfo.bpm;
-          if (Math.abs(tempoRatio - 1.0) > 0.02) {
-            const stretchedPath = path.join(workDir, `A_${stemKey}_stretched.mp3`);
-            await this.transcoder.timeStretch(processedStem, stretchedPath, tempoRatio);
-            processedStem = stretchedPath;
-          }
-        }
-
-        stemsToMix.push(processedStem);
+      // Auto Key-Match: pitch shift chosen vocal stem (max +/- 4 semitones) to match chosen instrument stem's key
+      if (autoKeyMatch && compatibility.pitchShiftSemis !== 0) {
+        const shiftAmount = vocalsPick === "A" ? compatibility.pitchShiftSemis : -compatibility.pitchShiftSemis;
+        const clampedShift = Math.max(-4, Math.min(4, shiftAmount));
+        const shiftedPath = path.join(workDir, `vocals_pitch_shifted.mp3`);
+        await this.transcoder.pitchShift(processedVocalPath, shiftedPath, clampedShift);
+        processedVocalPath = shiftedPath;
       }
 
-      // Process Track B stems
-      const trackBStemsMap: Record<string, string | undefined> = {
-        vocals: sepB.stems.STEM_VOCALS,
-        drums: sepB.stems.STEM_DRUMS,
-        bass: sepB.stems.STEM_BASS,
-        other: sepB.stems.STEM_OTHER,
-      };
-
-      for (const [stemKey, isSelected] of Object.entries(selection.trackB)) {
-        if (!isSelected) continue;
-        const stemPath = trackBStemsMap[stemKey];
-        if (!stemPath) continue;
-
-        let processedStem = stemPath;
-
-        // Apply tempo stretch if Track B needs tempo alignment to target BPM
-        if (autoTempoMatch && keyBInfo.bpm > 0 && effectiveTargetBpm > 0) {
-          const tempoRatio = effectiveTargetBpm / keyBInfo.bpm;
-          if (Math.abs(tempoRatio - 1.0) > 0.02) {
-            const stretchedPath = path.join(workDir, `B_${stemKey}_stretched.mp3`);
-            await this.transcoder.timeStretch(processedStem, stretchedPath, tempoRatio);
-            processedStem = stretchedPath;
-          }
+      // Auto Tempo-Match: time stretch vocal stem to chosen instrument's BPM
+      if (autoTempoMatch && vocalKeyInfo.bpm > 0 && effectiveTargetBpm > 0) {
+        const tempoRatio = effectiveTargetBpm / vocalKeyInfo.bpm;
+        if (Math.abs(tempoRatio - 1.0) > 0.02) {
+          const stretchedPath = path.join(workDir, `vocals_stretched.mp3`);
+          await this.transcoder.timeStretch(processedVocalPath, stretchedPath, tempoRatio);
+          processedVocalPath = stretchedPath;
         }
-
-        stemsToMix.push(processedStem);
       }
 
-      if (stemsToMix.length === 0) {
-        throw new Error("At least one stem must be selected to create a mashup mix");
-      }
-
-      // 5. MIXDOWN & LOUDNESS MASTERING
-      this.publishProgress(jobId, "EXPORT", 90, "Muxing final mashup mixdown with -14 LUFS mastering...");
-      await this.jobRepo.updateProgress(jobId, "EXPORT", 90, "Rendering final mixdown...");
+      // 5. MASTER MIXDOWN & EBU R128 LOUDNESS NORMALIZATION
+      this.publishProgress(jobId, "EXPORT", 90, "Muxing final mashup with -14 LUFS mastering...");
+      await this.jobRepo.updateProgress(jobId, "EXPORT", 90, "Rendering master mashup...");
 
       const mashupStorageDir = path.join(process.cwd(), "storage", "mashups");
       await fs.mkdir(mashupStorageDir, { recursive: true });
@@ -212,20 +164,20 @@ export class CreateMashupUseCase {
       const outFileName = `mashup_${sanitizedName}_${jobId.substring(0, 8)}.${outputFormat}`;
       const finalOutputPath = path.join(mashupStorageDir, outFileName);
 
-      // Mix all transformed stem tracks with balanced headroom
-      const rawMixPath = path.join(workDir, `raw_mix.${outputFormat}`);
-      await this.transcoder.mixAudioTracks(stemsToMix, rawMixPath);
+      // Mix the two stems together with balanced volumes
+      const rawMixPath = path.join(workDir, `raw_mashup_mix.${outputFormat}`);
+      await this.transcoder.mixAudioTracks([processedVocalPath, instrumentSourcePath], rawMixPath, [1.0, 0.95]);
 
-      // Transcode with EBU R128 -14 LUFS Loudness Normalization
+      // EBU R128 -14 LUFS normalization
       await this.transcoder.transcode({
         inputPath: rawMixPath,
         outputPath: finalOutputPath,
         targetFormat: outputFormat,
         normalizeLoudness: true,
         metadataTags: {
-          title: `${nameA} × ${nameB} (SplitStream AI Mashup)`,
-          artist: "SplitStream Remix Studio",
-          comment: `Harmonic Score: ${compatibility.scorePercent}% • Camelot: ${compatibility.camelotB}`,
+          title: `${nameA} (Vocals) × ${nameB} (Instrument)`,
+          artist: "SplitStream Mashup Studio",
+          comment: `Harmonic Score: ${compatibility.scorePercent}% • Target BPM: ${effectiveTargetBpm}`,
         },
       });
 
@@ -245,8 +197,8 @@ export class CreateMashupUseCase {
         id: `asset_mash_${jobId}`,
         jobId,
         userId,
-        name: `${nameA} × ${nameB} (AI Mashup)`,
-        kind: "MASHUP_AUDIO",
+        name: `${nameA} × ${nameB} (Mashup)`,
+        kind: "MASHUP",
         filePath: `/api/media/mashups/${outFileName}`,
         mimeType: outputFormat === "wav" ? "audio/wav" : outputFormat === "flac" ? "audio/flac" : "audio/mpeg",
         format: outputFormat,
@@ -255,6 +207,8 @@ export class CreateMashupUseCase {
         sizeBytes: validation.sizeBytes,
         waveformData: waveform,
         metadata: {
+          vocalsSource: selection.vocalsSource,
+          instrumentSource: selection.instrumentSource,
           trackAName: nameA,
           trackBName: nameB,
           compatibilityScore: compatibility.scorePercent,
@@ -265,18 +219,16 @@ export class CreateMashupUseCase {
           bpmB: compatibility.bpmB,
           targetBpm: effectiveTargetBpm,
           pitchShiftApplied: compatibility.pitchShiftSemis,
-          pitchShiftCapped: compatibility.pitchShiftCapped,
-          tempoStretchWarning: compatibility.tempoStretchWarning,
         },
         createdAt: new Date(),
       });
 
       await this.assetRepo.create(asset);
 
-      // Storage Discipline: Delete all intermediate separated stems and stretched files immediately
+      // Clean intermediate files
       await retentionManager.cleanJobIntermediates(jobId);
 
-      // Mark Job Completed
+      // Complete Job
       await this.jobRepo.updateStatus(jobId, "COMPLETED", "COMPLETED", undefined, "Mashup rendered successfully");
       this.realtimePub.publish(jobId, {
         jobId,
@@ -287,6 +239,11 @@ export class CreateMashupUseCase {
         mediaAssets: [asset.toJSON()],
         updatedAt: new Date().toISOString(),
       });
+
+      return {
+        asset,
+        masterPath: finalOutputPath,
+      };
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Mashup creation failed";
       console.error(`[CreateMashupUseCase] Error on job ${jobId}:`, err);
@@ -302,6 +259,7 @@ export class CreateMashupUseCase {
         message: errorMsg,
         updatedAt: new Date().toISOString(),
       });
+      throw err;
     }
   }
 

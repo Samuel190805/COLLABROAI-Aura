@@ -15,18 +15,11 @@ export async function POST(req: NextRequest) {
     const userId = (session?.user as any)?.id || null;
     const clientIp = req.headers.get("x-forwarded-for") || (req as any).ip || "127.0.0.1";
 
-    // Rate Limiting check
     const rateCheck = rateLimiter.check(userId || clientIp, "stem_separation");
     if (!rateCheck.allowed) {
       return NextResponse.json(
-        {
-          error: "Rate limit exceeded. Please wait before queuing more stem separation jobs.",
-          resetTime: rateCheck.resetTime,
-        },
-        {
-          status: 429,
-          headers: rateLimiter.getRateLimitHeaders(rateCheck),
-        }
+        { error: "Rate limit exceeded. Please wait before queuing more separation jobs." },
+        { status: 429, headers: rateLimiter.getRateLimitHeaders(rateCheck) }
       );
     }
 
@@ -38,83 +31,59 @@ export async function POST(req: NextRequest) {
     let sourceType: "file" | "url" = "file";
     let inputFilePath: string | undefined = undefined;
     let sourceUrl: string | undefined = undefined;
-    let outputFormat = "mp3";
-    let bitrate = "320k";
-    let mode: "4-stem" | "6-stem" = "4-stem";
-    let ensemble = false;
-    let denoise = true;
+    let outputFormat: "mp3" | "wav" | "flac" = "mp3";
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       const file = (formData.get("file") || formData.get("audio")) as File | null;
       const url = formData.get("url") as string | null;
-      outputFormat = (formData.get("outputFormat") as string) || "mp3";
-      bitrate = (formData.get("bitrate") as string) || "320k";
-      mode = ((formData.get("mode") as string) === "6-stem" ? "6-stem" : "4-stem");
-      ensemble = formData.get("ensemble") === "true";
-      denoise = formData.get("denoise") !== "false";
+      const fmt = (formData.get("outputFormat") as string) || "mp3";
+      if (["mp3", "wav", "flac"].includes(fmt)) {
+        outputFormat = fmt as "mp3" | "wav" | "flac";
+      }
 
       if (file && file.size > 0) {
         sourceType = "file";
         const buffer = Buffer.from(await file.arrayBuffer());
-        inputFilePath = path.join(/*turbopackIgnore: true*/ workDir, file.name || "input.wav");
+        inputFilePath = path.join(workDir, file.name || "input.wav");
         await fs.writeFile(inputFilePath, buffer);
       } else if (url && url.trim()) {
         sourceType = "url";
         const validation = validateAndNormalizeSourceUrl(url.trim());
         if (validation.isDrmProtected) {
-          return NextResponse.json(
-            { error: "This source isn't supported — it may be DRM-protected." },
-            { status: 400 }
-          );
+          return NextResponse.json({ error: "This source isn't supported — it may be DRM-protected." }, { status: 400 });
         }
         if (!validation.isValid) {
-          return NextResponse.json(
-            { error: validation.error || "Invalid URL" },
-            { status: 400 }
-          );
+          return NextResponse.json({ error: validation.error || "Invalid URL" }, { status: 400 });
         }
         sourceUrl = validation.normalizedUrl;
       } else {
-        return NextResponse.json(
-          { error: "Please provide either an audio file or a media URL" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Please provide an audio file or media URL" }, { status: 400 });
       }
     } else {
       const json = await req.json().catch(() => ({}));
-      if (!json || (!json.url && !json.inputFilePath)) {
-        return NextResponse.json(
-          { error: "Please provide a valid media URL or upload an audio file." },
-          { status: 400 }
-        );
-      }
-
       if (json.url) {
         sourceType = "url";
         const validation = validateAndNormalizeSourceUrl(json.url.trim());
         if (validation.isDrmProtected) {
-          return NextResponse.json(
-            { error: "This source isn't supported — it may be DRM-protected." },
-            { status: 400 }
-          );
+          return NextResponse.json({ error: "This source isn't supported — it may be DRM-protected." }, { status: 400 });
         }
         if (!validation.isValid) {
-          return NextResponse.json(
-            { error: validation.error || "Invalid URL" },
-            { status: 400 }
-          );
+          return NextResponse.json({ error: validation.error || "Invalid URL" }, { status: 400 });
         }
         sourceUrl = validation.normalizedUrl;
+      } else if (json.inputFilePath) {
+        sourceType = "file";
+        inputFilePath = json.inputFilePath;
+      } else {
+        return NextResponse.json({ error: "Please provide either a media URL or input file" }, { status: 400 });
       }
-      if (json.outputFormat) outputFormat = json.outputFormat;
-      if (json.bitrate) bitrate = json.bitrate;
-      if (json.mode === "6-stem") mode = "6-stem";
-      if (json.ensemble !== undefined) ensemble = Boolean(json.ensemble);
-      if (json.denoise !== undefined) denoise = Boolean(json.denoise);
+
+      if (json.outputFormat && ["mp3", "wav", "flac"].includes(json.outputFormat)) {
+        outputFormat = json.outputFormat;
+      }
     }
 
-    // Create Job Entity
     const job = new Job({
       id: jobId,
       userId,
@@ -122,24 +91,14 @@ export async function POST(req: NextRequest) {
       status: "PENDING",
       stage: "ANALYSIS",
       progress: 0,
-      message: "Queued for stem separation",
-      inputParams: {
-        sourceType,
-        sourceUrl,
-        inputFilePath,
-        outputFormat,
-        bitrate,
-        mode,
-        ensemble,
-        denoise,
-      },
+      message: "Queued for 2-stem separation (Vocals & Instrument)",
+      inputParams: { sourceType, sourceUrl, inputFilePath, outputFormat },
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
     await container.jobRepository.create(job);
 
-    // Enqueue async execution
     await container.queue.enqueue(jobId, async () => {
       await container.separateStemsUseCase.execute({
         jobId,
@@ -147,28 +106,20 @@ export async function POST(req: NextRequest) {
         sourceType,
         inputFilePath,
         sourceUrl,
-        outputFormat: outputFormat as any,
-        bitrate,
-        mode,
-        ensemble,
-        denoise,
+        outputFormat,
       });
     });
 
     return NextResponse.json(
       {
-        success: true,
         jobId,
         status: "PENDING",
         stage: "ANALYSIS",
-        message: "Job initialized",
       },
-      {
-        headers: rateLimiter.getRateLimitHeaders(rateCheck),
-      }
+      { headers: rateLimiter.getRateLimitHeaders(rateCheck) }
     );
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Failed to initialize stem separation";
+    const errorMsg = err instanceof Error ? err.message : "Failed to initialize 2-stem separation";
     console.error("[/api/stems/separate] Error:", err);
     return NextResponse.json({ error: errorMsg }, { status: 500 });
   }

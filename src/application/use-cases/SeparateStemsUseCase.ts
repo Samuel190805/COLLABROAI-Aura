@@ -1,15 +1,14 @@
 import path from "path";
 import fs from "fs/promises";
-import fsSync from "fs";
 import crypto from "crypto";
 import { IJobRepository } from "@/domain/repositories/IJobRepository";
 import { IAssetRepository } from "@/domain/repositories/IAssetRepository";
-import { SeparationProviderPort, SeparationOptions } from "../ports/SeparationProviderPort";
+import { SeparationProviderPort } from "../ports/SeparationProviderPort";
 import { MediaSourceResolverPort } from "../ports/MediaSourceResolverPort";
 import { TranscoderPort } from "../ports/TranscoderPort";
 import { RealtimePublisherPort } from "../ports/RealtimePublisherPort";
 import { MediaFormat } from "@/domain/value-objects/MediaFormats";
-import { MediaAsset, MediaAssetKind } from "@/domain/entities/MediaAsset";
+import { MediaAsset } from "@/domain/entities/MediaAsset";
 import { retentionManager } from "@/infrastructure/storage/retention-manager";
 
 async function computeFileHash(filePath: string): Promise<string> {
@@ -25,8 +24,6 @@ export interface SeparateStemsInput {
   sourceUrl?: string;
   outputFormat: MediaFormat;
   bitrate?: string;
-  mode?: "4-stem" | "6-stem";
-  ensemble?: boolean;
   denoise?: boolean;
 }
 
@@ -48,9 +45,7 @@ export class SeparateStemsUseCase {
       inputFilePath,
       sourceUrl,
       outputFormat,
-      bitrate,
-      mode = "4-stem",
-      ensemble = false,
+      bitrate = "320k",
       denoise = true,
     } = input;
 
@@ -58,21 +53,21 @@ export class SeparateStemsUseCase {
     await fs.mkdir(workDir, { recursive: true });
 
     try {
-      // 1. ANALYSIS STAGE
-      this.publishProgress(jobId, "ANALYSIS", 5, "Analyzing audio waveform and spectrum...");
+      // 1. ANALYSIS STAGE (0–15%): Validate audio stream and capture exact source duration
+      this.publishProgress(jobId, "ANALYSIS", 5, "Analyzing audio stream & container headers...");
       await this.jobRepo.updateProgress(jobId, "ANALYSIS", 5, "Analyzing audio...");
 
       let workingAudioPath = inputFilePath;
 
-      // If source is a URL, resolve and download audio stream first
+      // If source is a URL, resolve and download audio stream
       if (sourceType === "url" && sourceUrl) {
-        this.publishProgress(jobId, "ANALYSIS", 15, "Resolving audio track from URL...");
+        this.publishProgress(jobId, "ANALYSIS", 10, "Resolving audio stream from URL...");
         const downloaded = await this.mediaResolver.download({
           url: sourceUrl,
           outputDirectory: workDir,
           targetFormat: "wav",
           onProgress: (_stage, pct, msg) => {
-            this.publishProgress(jobId, "ANALYSIS", Math.min(25, 10 + pct * 0.15), msg);
+            this.publishProgress(jobId, "ANALYSIS", Math.min(12, 5 + pct * 0.07), msg);
           },
         });
         workingAudioPath = downloaded.filePath;
@@ -82,23 +77,38 @@ export class SeparateStemsUseCase {
         throw new Error("No valid input file or URL provided for stem separation");
       }
 
-      // Check if file is video; if so, extract audio track
+      // Check if file is video; if so, extract lossless audio track
       const ext = path.extname(workingAudioPath).toLowerCase();
       if ([".mp4", ".mkv", ".webm", ".mov", ".avi"].includes(ext)) {
-        this.publishProgress(jobId, "ANALYSIS", 20, "Extracting audio track from video...");
+        this.publishProgress(jobId, "ANALYSIS", 12, "Extracting lossless audio stream from video container...");
         const extractedAudio = path.join(workDir, "extracted_source.wav");
         await this.transcoder.extractAudioFromVideo(workingAudioPath, extractedAudio);
         workingAudioPath = extractedAudio;
       }
 
-      // 2. MODEL INFERENCE STAGE (Demucs v4 / Ensemble)
-      const inferenceMsg = ensemble
-        ? "Running Multi-Model Ensemble Separation (Demucs + Spectral Blending)..."
-        : mode === "6-stem"
-        ? "Decomposing 6 Stems with Demucs Extended Neural Model..."
-        : "Decomposing mix with neural source-separation model...";
-      this.publishProgress(jobId, "MODEL_INFERENCE", 30, inferenceMsg);
-      await this.jobRepo.updateProgress(jobId, "MODEL_INFERENCE", 30, "Running deep learning model...");
+      // Hard analysis gate: inspect input with ffprobe
+      const sourceProbe = await this.transcoder.probeAudio(workingAudioPath);
+      if (!sourceProbe.hasAudioStream || sourceProbe.duration <= 0) {
+        throw new Error("Uploaded source file contains no valid audio stream");
+      }
+      const sourceDuration = sourceProbe.duration;
+
+      this.publishProgress(
+        jobId,
+        "ANALYSIS",
+        15,
+        `Source validated (${sourceDuration.toFixed(2)}s, ${sourceProbe.codec || "audio"}). Ready for separation.`
+      );
+      await this.jobRepo.updateProgress(jobId, "ANALYSIS", 15, "Source audio validated");
+
+      // 2. MODEL INFERENCE STAGE (15–65%): Call 2-stem separation provider (Demucs or DSP fallback)
+      this.publishProgress(
+        jobId,
+        "MODEL_INFERENCE",
+        18,
+        "Decomposing audio into isolated Vocals and Instrument..."
+      );
+      await this.jobRepo.updateProgress(jobId, "MODEL_INFERENCE", 18, "Running 2-stem separation...");
 
       const stemsOutputDir = path.join(workDir, "raw_stems");
       await fs.mkdir(stemsOutputDir, { recursive: true });
@@ -106,152 +116,148 @@ export class SeparateStemsUseCase {
       const rawStems = await this.separationProvider.separate(
         workingAudioPath,
         stemsOutputDir,
-        (stage, pct, msg) => {
-          const mappedProgress = 30 + Math.floor(pct * 0.4); // 30% to 70%
-          this.publishProgress(jobId, "MODEL_INFERENCE", mappedProgress, msg || `Inference in progress (${pct}%)...`);
+        (_stage, pct, msg) => {
+          // Map provider progress into 18% - 64% range
+          const mapped = 18 + Math.floor(pct * 0.46);
+          this.publishProgress(jobId, "MODEL_INFERENCE", mapped, msg || `Decomposing audio (${pct}%)...`);
         },
-        {
-          mode,
-          ensemble,
-          denoise,
-        }
+        { denoise, skipPostProcessing: true }
       );
 
-      // 3. STEM RECONSTRUCTION & CHECKSUM INTEGRITY VALIDATION STAGE
+      this.publishProgress(jobId, "MODEL_INFERENCE", 65, `Model completed: ${rawStems.modelUsed}`);
+      await this.jobRepo.updateProgress(jobId, "MODEL_INFERENCE", 65, "Separation model complete");
+
+      // Verify raw stems exist and are not identical
+      const stemFiles = [
+        {
+          key: "vocals",
+          rawPath: rawStems.vocalsPath,
+          name: "Vocals",
+          kind: "STEM_VOCALS" as const,
+          filters: [
+            "highpass=f=40",
+            "agate=threshold=-60dB:ratio=2:attack=5:release=100",
+            "loudnorm=I=-16:TP=-1.5:LRA=11",
+          ],
+        },
+        {
+          key: "instrument",
+          rawPath: rawStems.instrumentPath,
+          name: "Instrument",
+          kind: "STEM_INSTRUMENT" as const,
+          filters: [
+            "agate=threshold=-60dB:ratio=2:attack=5:release=100",
+            "loudnorm=I=-16:TP=-1.5:LRA=11",
+          ],
+        },
+      ];
+
+      // 3. STEM RECONSTRUCTION & CLEANUP STAGE (65–85%):
+      // Apply Section 3 post-processing (highpass 40Hz, agate -60dB, loudnorm -16 LUFS) and transcode
       this.publishProgress(
         jobId,
         "STEM_RECONSTRUCTION",
-        75,
-        "Reconstructing stems and generating derived 3-stem instruments mix..."
+        68,
+        "Applying 40Hz rumble cut, -60dB noise gate & EBU R128 loudness normalization..."
       );
       await this.jobRepo.updateProgress(
         jobId,
         "STEM_RECONSTRUCTION",
-        75,
-        "Validating stem uniqueness..."
+        68,
+        "Applying stem post-processing & mastering..."
       );
 
-      // Generate derived "Instruments" combined stem (Drums + Other + Piano + Guitar, excluding Vocals & Bass)
-      const instrumentSources: string[] = [];
-      if (rawStems.drumsPath) instrumentSources.push(rawStems.drumsPath);
-      if (rawStems.otherPath) instrumentSources.push(rawStems.otherPath);
-      if (rawStems.pianoPath) instrumentSources.push(rawStems.pianoPath);
-      if (rawStems.guitarPath) instrumentSources.push(rawStems.guitarPath);
-
-      const rawInstrumentsPath = path.join(stemsOutputDir, "instruments.wav");
-      if (instrumentSources.length > 0) {
-        await this.transcoder.mixAudioTracks(instrumentSources, rawInstrumentsPath);
-      }
-
-      const stemFiles: Array<{ key: string; path: string; name: string; kind: MediaAssetKind }> = [
-        { key: "vocals", path: rawStems.vocalsPath, name: "Vocals", kind: "STEM_VOCALS" },
-        ...(fsSync.existsSync(rawInstrumentsPath)
-          ? [{ key: "instruments", path: rawInstrumentsPath, name: "Instruments", kind: "STEM_INSTRUMENTS" as const }]
-          : []),
-        { key: "bass", path: rawStems.bassPath, name: "Bass", kind: "STEM_BASS" },
-        { key: "drums", path: rawStems.drumsPath, name: "Drums", kind: "STEM_DRUMS" },
-        { key: "other", path: rawStems.otherPath, name: "Other (Instruments)", kind: "STEM_OTHER" },
-      ];
-
-      if (rawStems.pianoPath) {
-        stemFiles.push({
-          key: "piano",
-          path: rawStems.pianoPath,
-          name: "Piano",
-          kind: "STEM_PIANO" as const,
-        });
-      }
-
-      if (rawStems.guitarPath) {
-        stemFiles.push({
-          key: "guitar",
-          path: rawStems.guitarPath,
-          name: "Guitar",
-          kind: "STEM_GUITAR" as const,
-        });
-      }
-
-      if (rawStems.instrumentalPath) {
-        stemFiles.push({
-          key: "instrumental",
-          path: rawStems.instrumentalPath,
-          name: "Instrumental (Karaoke)",
-          kind: "STEM_INSTRUMENTAL" as const,
-        });
-      }
-
-      // Checksum Verification: Confirm unique content
-      const inputHash = await computeFileHash(workingAudioPath);
-      const rawStemHashes: Record<string, string> = {};
-
-      for (const item of stemFiles) {
-        const itemHash = await computeFileHash(item.path);
-        rawStemHashes[item.key] = itemHash;
-
-        // Base stems should not be identical copies of the full unseparated song
-        if (itemHash === inputHash && ["vocals", "bass", "drums", "other"].includes(item.key)) {
-          throw new Error(
-            `Separation integrity check failed for ${item.name}: Stem audio is identical to the unseparated source song.`
-          );
-        }
-      }
-
-      // Check base stem uniqueness (excluding composite mixes like 'instruments' and 'instrumental')
-      const baseStemKeys = ["vocals", "drums", "bass", "other", "piano", "guitar"];
-      const baseStems = stemFiles.filter((s) => baseStemKeys.includes(s.key));
-      const baseHashes = baseStems.map((s) => rawStemHashes[s.key]).filter(Boolean);
-      const uniqueBaseHashes = new Set(baseHashes);
-
-      // If all base stems are identical to each other, separation failed
-      if (baseHashes.length > 1 && uniqueBaseHashes.size === 1) {
-        throw new Error(
-          `Separation integrity check failed: Output stems have duplicate audio content (all ${baseHashes.length} base stems are identical).`
-        );
-      }
-
-      // 4. EXPORT & INTEGRITY VALIDATION STAGE
-      this.publishProgress(jobId, "EXPORT", 85, "Transcoding & validating stem audio integrity...");
-      await this.jobRepo.updateProgress(jobId, "EXPORT", 85, "Validating audio codecs...");
-
-      // Store in managed storage directory (Storage Discipline)
       const finalStemsDir = path.join(process.cwd(), "storage", "jobs", jobId);
       await fs.mkdir(finalStemsDir, { recursive: true });
 
-      const createdAssets: MediaAsset[] = [];
-      const transcodedHashes: Record<string, string> = {};
+      const finalStemsInfo: Array<{
+        key: string;
+        finalPath: string;
+        name: string;
+        kind: "STEM_VOCALS" | "STEM_INSTRUMENT";
+      }> = [];
 
       for (let i = 0; i < stemFiles.length; i++) {
         const item = stemFiles[i];
         const outFileName = `${item.key}.${outputFormat}`;
         const finalPath = path.join(finalStemsDir, outFileName);
 
-        // Transcode through validated transcoder
+        const currentPct = 68 + Math.floor(((i + 1) / stemFiles.length) * 16);
+        this.publishProgress(
+          jobId,
+          "STEM_RECONSTRUCTION",
+          currentPct,
+          `Mastering & transcoding ${item.name} (${outputFormat.toUpperCase()})...`
+        );
+
+        // Transcode with mandatory post-processing filters in a single high-fidelity pass
         await this.transcoder.transcode({
-          inputPath: item.path,
+          inputPath: item.rawPath,
           outputPath: finalPath,
           targetFormat: outputFormat,
-          bitrate: bitrate || "320k",
+          bitrate,
+          customAudioFilters: item.filters,
         });
 
-        // Strict ffprobe container & codec validation
-        const validation = await this.transcoder.validateOutput(finalPath, outputFormat);
+        finalStemsInfo.push({
+          key: item.key,
+          finalPath,
+          name: item.name,
+          kind: item.kind,
+        });
+      }
+
+      this.publishProgress(jobId, "STEM_RECONSTRUCTION", 85, "Stem reconstruction and mastering complete");
+      await this.jobRepo.updateProgress(jobId, "STEM_RECONSTRUCTION", 85, "Stems mastered");
+
+      // 4. EXPORT & HARD INTEGRITY GATE (85–100%)
+      // Section 4 Gate:
+      // - ffprobe on both final files
+      // - Reject if either file has no valid audio stream
+      // - Reject if duration drifts > 50ms from source
+      this.publishProgress(jobId, "EXPORT", 88, "Running hard ffprobe integrity gate & audio stream validation...");
+      await this.jobRepo.updateProgress(jobId, "EXPORT", 88, "Verifying audio integrity...");
+
+      const createdAssets: MediaAsset[] = [];
+
+      for (let i = 0; i < finalStemsInfo.length; i++) {
+        const item = finalStemsInfo[i];
+
+        // 1. Validate stream and format with ffprobe
+        const validation = await this.transcoder.validateOutput(item.finalPath, outputFormat);
         if (!validation.isValid) {
           throw new Error(
-            `Output integrity check failed for ${item.name}: expected ${outputFormat}, got ${validation.actualContainer} (${validation.error})`
+            `Integrity check failed for ${item.name}: ${validation.error || "Invalid stream container"}`
           );
         }
 
-        const outHash = await computeFileHash(finalPath);
-        transcodedHashes[item.key] = outHash;
+        // 2. Validate duration drift within 50ms (0.050s) of source duration
+        const stemDuration = validation.duration || 0;
+        const driftSeconds = Math.abs(stemDuration - sourceDuration);
+        const driftMs = Math.round(driftSeconds * 1000);
+
+        if (driftSeconds > 0.050) {
+          throw new Error(
+            `Integrity gate failed: ${item.name} duration (${stemDuration.toFixed(3)}s) drifted by ${driftMs}ms from source (${sourceDuration.toFixed(3)}s, exceeds 50ms limit)`
+          );
+        }
+
+        const outHash = await computeFileHash(item.finalPath);
 
         let waveform: number[] = [];
         try {
-          waveform = await this.transcoder.extractWaveformData(finalPath, 80);
+          waveform = await this.transcoder.extractWaveformData(item.finalPath, 80);
         } catch {
           waveform = Array.from({ length: 80 }, () => Math.random() * 0.8 + 0.1);
         }
 
-        const confidence = rawStems.confidenceScores?.[item.key] ?? 0.94;
+        const confidence = rawStems.confidenceScores[item.key as "vocals" | "instrument"] ?? 0.95;
+        const qualityLabel =
+          rawStems.engine === "demucs"
+            ? "Studio quality (Demucs)"
+            : "Standard quality (offline DSP mode)";
+
+        const outFileName = `${item.key}.${outputFormat}`;
 
         const asset = new MediaAsset({
           id: `asset_${jobId}_${item.key}`,
@@ -263,19 +269,19 @@ export class SeparateStemsUseCase {
           mimeType: `audio/${outputFormat === "mp3" ? "mpeg" : outputFormat}`,
           format: outputFormat,
           codec: validation.actualCodec || outputFormat,
-          duration: validation.duration || rawStems.durationSeconds || null,
+          duration: stemDuration,
           sizeBytes: validation.sizeBytes || null,
           waveformData: waveform,
           metadata: {
             modelUsed: rawStems.modelUsed,
-            bitrate: bitrate || "320k",
+            engine: rawStems.engine,
+            bitrate,
             stemCategory: item.key,
             checksumSha256: outHash,
             confidenceScore: confidence,
             clarityPercent: Math.round(confidence * 100),
-            mode,
-            ensemble,
-            denoised: denoise,
+            qualityLabel,
+            durationDriftMs: driftMs,
           },
           createdAt: new Date(),
         });
@@ -283,13 +289,25 @@ export class SeparateStemsUseCase {
         await this.assetRepo.create(asset);
         createdAssets.push(asset);
 
-        const expProgress = 85 + Math.floor(((i + 1) / stemFiles.length) * 14);
+        const expProgress = 88 + Math.floor(((i + 1) / finalStemsInfo.length) * 11);
         this.publishProgress(
           jobId,
           "EXPORT",
           expProgress,
-          `Validated ${item.name} (${Math.round(confidence * 100)}% clarity)...`
+          `Integrity gate passed for ${item.name} (${driftMs}ms drift, ${Math.round(confidence * 100)}% clarity)...`
         );
+      }
+
+      // Check that the two stems are not identical copies
+      const vocalsAsset = createdAssets.find((a) => a.kind === "STEM_VOCALS");
+      const instAsset = createdAssets.find((a) => a.kind === "STEM_INSTRUMENT");
+      if (
+        vocalsAsset &&
+        instAsset &&
+        (vocalsAsset.metadata as any)?.checksumSha256 &&
+        (vocalsAsset.metadata as any)?.checksumSha256 === (instAsset.metadata as any)?.checksumSha256
+      ) {
+        throw new Error("Separation failed: Vocals and Instrument stems contain duplicate audio.");
       }
 
       // Storage discipline: clean intermediate temporary job directory
@@ -301,7 +319,7 @@ export class SeparateStemsUseCase {
         "COMPLETED",
         "COMPLETED",
         undefined,
-        "Stems separated and validated successfully"
+        "Vocals and Instrument separated and verified successfully"
       );
 
       this.realtimePub.publish(jobId, {

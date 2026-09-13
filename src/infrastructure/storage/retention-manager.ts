@@ -8,21 +8,40 @@ export interface StorageStats {
   filesCount: number;
 }
 
+export interface SweepResult {
+  lastSweepTimestamp: string;
+  filesDeletedLastSweep: number;
+  bytesFreedLastSweep: number;
+}
+
 export class StorageRetentionManager {
   private baseDir: string;
   private tmpJobsDir: string;
   private tmpMediaDir: string;
   private storageDir: string;
-  private storageJobsDir: string;
+  private storageSubDirs: string[];
+
+  private lastSweepTimestamp: string = new Date().toISOString();
+  private filesDeletedLastSweep: number = 0;
+  private bytesFreedLastSweep: number = 0;
+  private sweepTimer: NodeJS.Timeout | null = null;
 
   constructor(baseDir?: string) {
     this.baseDir = baseDir || process.cwd();
     this.tmpJobsDir = path.join(this.baseDir, "tmp", "jobs");
     this.tmpMediaDir = path.join(this.baseDir, "tmp", "media");
     this.storageDir = path.join(this.baseDir, "storage");
-    this.storageJobsDir = path.join(this.baseDir, "storage", "jobs");
+    this.storageSubDirs = [
+      path.join(this.baseDir, "storage", "jobs"),
+      path.join(this.baseDir, "storage", "downloads"),
+      path.join(this.baseDir, "storage", "translated"),
+      path.join(this.baseDir, "storage", "chords"),
+      path.join(this.baseDir, "storage", "mashups"),
+      path.join(this.baseDir, "storage", "conversions"),
+    ];
 
     this.ensureBaseDirs();
+    this.startPeriodicSweep();
   }
 
   private ensureBaseDirs(): void {
@@ -33,11 +52,27 @@ export class StorageRetentionManager {
       if (!fsSync.existsSync(this.tmpMediaDir)) {
         fsSync.mkdirSync(this.tmpMediaDir, { recursive: true });
       }
-      if (!fsSync.existsSync(this.storageJobsDir)) {
-        fsSync.mkdirSync(this.storageJobsDir, { recursive: true });
+      for (const dir of this.storageSubDirs) {
+        if (!fsSync.existsSync(dir)) {
+          fsSync.mkdirSync(dir, { recursive: true });
+        }
       }
     } catch {
-      // Ignore directory creation issues during init
+      // Ignore during init
+    }
+  }
+
+  private startPeriodicSweep(): void {
+    // Run sweep every 1 hour (3600000 ms)
+    if (!this.sweepTimer && typeof setInterval !== "undefined") {
+      this.sweepTimer = setInterval(() => {
+        this.sweepExpiredFiles(24).catch((err) =>
+          console.warn("[StorageRetentionManager] Hourly sweep error:", err)
+        );
+      }, 3600000);
+      if (this.sweepTimer.unref) {
+        this.sweepTimer.unref();
+      }
     }
   }
 
@@ -51,6 +86,10 @@ export class StorageRetentionManager {
     return dir;
   }
 
+  /**
+   * Intermediate files (raw streams, unmixed stems, temp files):
+   * DELETED IMMEDIATELY after processing completes. (Section 4.8.1)
+   */
   public async cleanJobIntermediates(jobId: string): Promise<void> {
     try {
       const dir = this.getJobWorkingDir(jobId);
@@ -74,10 +113,12 @@ export class StorageRetentionManager {
     let totalBytes = 0;
     let filesCount = 0;
 
-    const targetDirs = [this.storageDir, this.tmpJobsDir, this.tmpMediaDir];
+    const targetDirs = [this.storageDir, this.tmpJobsDir, this.tmpMediaDir, ...this.storageSubDirs];
+    const scanned = new Set<string>();
 
     for (const dir of targetDirs) {
-      if (!fsSync.existsSync(dir)) continue;
+      if (!fsSync.existsSync(dir) || scanned.has(dir)) continue;
+      scanned.add(dir);
 
       const scanDirectory = async (currentDir: string) => {
         try {
@@ -92,12 +133,12 @@ export class StorageRetentionManager {
                 totalBytes += stat.size;
                 filesCount += 1;
               } catch {
-                // File might have been removed during scan
+                // Ignore transient file removal
               }
             }
           }
         } catch {
-          // Ignore read errors
+          // Ignore
         }
       };
 
@@ -111,6 +152,9 @@ export class StorageRetentionManager {
     };
   }
 
+  /**
+   * Sweeps files older than maxAgeHours across storage and tmp (Section 4.8.2)
+   */
   public async sweepExpiredFiles(maxAgeHours: number = 24): Promise<{ deletedCount: number; freedBytes: number }> {
     let deletedCount = 0;
     let freedBytes = 0;
@@ -124,7 +168,6 @@ export class StorageRetentionManager {
           const fullPath = path.join(currentDir, entry.name);
           if (entry.isDirectory()) {
             await scanAndClean(fullPath);
-            // If directory is now empty, remove it
             const remaining = await fs.readdir(fullPath).catch(() => ["dummy"]);
             if (remaining.length === 0) {
               await fs.rm(fullPath, { recursive: true, force: true }).catch(() => {});
@@ -136,6 +179,9 @@ export class StorageRetentionManager {
                 await fs.unlink(fullPath);
                 deletedCount++;
                 freedBytes += stat.size;
+                console.log(
+                  `[StorageRetentionManager] Deleted expired file: ${fullPath} (${this.formatBytes(stat.size)} freed)`
+                );
               }
             } catch {
               // Ignore
@@ -147,10 +193,66 @@ export class StorageRetentionManager {
       }
     };
 
+    // Clean tmp dirs and storage subdirs
     await scanAndClean(this.tmpJobsDir);
     await scanAndClean(this.tmpMediaDir);
+    for (const sDir of this.storageSubDirs) {
+      await scanAndClean(sDir);
+    }
+
+    this.lastSweepTimestamp = new Date().toISOString();
+    this.filesDeletedLastSweep = deletedCount;
+    this.bytesFreedLastSweep = freedBytes;
 
     return { deletedCount, freedBytes };
+  }
+
+  public getSweepMetrics(): SweepResult {
+    return {
+      lastSweepTimestamp: this.lastSweepTimestamp,
+      filesDeletedLastSweep: this.filesDeletedLastSweep,
+      bytesFreedLastSweep: this.bytesFreedLastSweep,
+    };
+  }
+
+  /**
+   * Checks free disk space: if < 2GB, triggers immediate retention sweep (Section 4.8.4)
+   */
+  public async checkDiskSpaceAndEnforce(): Promise<{
+    totalSpaceBytes: number;
+    freeSpaceBytes: number;
+    isLowSpace: boolean;
+  }> {
+    try {
+      const stat = await fs.statfs(this.baseDir);
+      const totalSpaceBytes = stat.bsize * stat.blocks;
+      const freeSpaceBytes = stat.bsize * stat.bavail;
+      const TWO_GB = 2 * 1024 * 1024 * 1024;
+
+      if (freeSpaceBytes < TWO_GB) {
+        console.warn("[StorageRetentionManager] Disk space below 2GB! Triggering emergency sweep...");
+        await this.sweepExpiredFiles(24);
+
+        const postStat = await fs.statfs(this.baseDir);
+        const postFree = postStat.bsize * postStat.bavail;
+        if (postFree < TWO_GB) {
+          console.warn("[StorageRetentionManager] Disk space still below 2GB. Running 1-hour aggressive sweep...");
+          await this.sweepExpiredFiles(1);
+        }
+      }
+
+      return {
+        totalSpaceBytes,
+        freeSpaceBytes,
+        isLowSpace: freeSpaceBytes < TWO_GB,
+      };
+    } catch {
+      return {
+        totalSpaceBytes: 0,
+        freeSpaceBytes: 0,
+        isLowSpace: false,
+      };
+    }
   }
 }
 

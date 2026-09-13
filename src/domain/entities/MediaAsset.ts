@@ -1,19 +1,12 @@
 export type MediaAssetKind =
   | "ORIGINAL"
   | "STEM_VOCALS"
-  | "STEM_INSTRUMENTS"
-  | "STEM_DRUMS"
-  | "STEM_BASS"
-  | "STEM_OTHER"
-  | "STEM_PIANO"
-  | "STEM_GUITAR"
-  | "STEM_INSTRUMENTAL"
+  | "STEM_INSTRUMENT"
   | "DOWNLOAD_AUDIO"
   | "DOWNLOAD_VIDEO"
   | "TRANSLATED_AUDIO"
-  | "CHORD_PRACTICE_AUDIO"
-  | "MASHUP_AUDIO"
-  | "SOURCE_AUDIO";
+  | "MASHUP"
+  | "CONVERTED_MEDIA";
 
 export interface MediaAssetProps {
   id: string;
@@ -59,8 +52,16 @@ export class MediaAsset {
     return this.props.duration;
   }
 
+  get sizeBytes(): number | null | undefined {
+    return this.props.sizeBytes;
+  }
+
   get waveformData(): number[] | null | undefined {
     return this.props.waveformData;
+  }
+
+  get metadata(): Record<string, unknown> | null | undefined {
+    return this.props.metadata;
   }
 
   toJSON() {

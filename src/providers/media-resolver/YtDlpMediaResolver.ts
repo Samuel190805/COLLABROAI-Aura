@@ -9,11 +9,14 @@ import {
 } from "@/application/ports/MediaSourceResolverPort";
 import { validateAndNormalizeSourceUrl } from "@/domain/value-objects/SourceUrlValidator";
 
+import { spawn } from "child_process";
+
 const execAsync = promisify(exec);
 
 export class YtDlpMediaResolver implements MediaSourceResolverPort {
   private binPath: string | null = null;
   private ffmpegBinPath: string | null = null;
+  private setupPromise: Promise<void> | null = null;
 
   constructor() {
     this.initPaths();
@@ -33,6 +36,13 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
     // Resolve yt-dlp command/binary
     if (process.env.MEDIA_EXTRACTOR_BIN && fs.existsSync(process.env.MEDIA_EXTRACTOR_BIN)) {
       this.binPath = `"${process.env.MEDIA_EXTRACTOR_BIN}"`;
+      return;
+    }
+
+    const localBinDir = path.join(process.cwd(), "bin");
+    const localExe = path.join(localBinDir, process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
+    if (fs.existsSync(localExe)) {
+      this.binPath = `"${localExe}"`;
       return;
     }
 
@@ -63,6 +73,63 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
     this.binPath = "yt-dlp";
   }
 
+  async ensureBinary(): Promise<void> {
+    if (this.setupPromise) return this.setupPromise;
+    this.setupPromise = (async () => {
+      try {
+        await execAsync("yt-dlp --version");
+        return;
+      } catch {
+        try {
+          await execAsync("python -m yt_dlp --version");
+          this.binPath = "python -m yt_dlp";
+          return;
+        } catch {
+          // Attempt auto-fetch to bin/
+          try {
+            const localBinDir = path.join(process.cwd(), "bin");
+            await fs.promises.mkdir(localBinDir, { recursive: true });
+            const isWin = process.platform === "win32";
+            const targetExe = path.join(localBinDir, isWin ? "yt-dlp.exe" : "yt-dlp");
+            if (!fs.existsSync(targetExe)) {
+              console.log("[YtDlpMediaResolver] Auto-fetching yt-dlp binary...");
+              const dlUrl = isWin
+                ? "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+                : "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
+              const res = await fetch(dlUrl);
+              if (res.ok) {
+                const buf = Buffer.from(await res.arrayBuffer());
+                await fs.promises.writeFile(targetExe, buf);
+                if (!isWin) {
+                  await fs.promises.chmod(targetExe, 0o755);
+                }
+                this.binPath = `"${targetExe}"`;
+                console.log(`[YtDlpMediaResolver] Successfully auto-fetched yt-dlp to ${targetExe}`);
+              }
+            } else {
+              this.binPath = `"${targetExe}"`;
+            }
+          } catch (fetchErr) {
+            console.warn("[YtDlpMediaResolver] Auto-fetch notice:", fetchErr);
+          }
+        }
+      }
+    })();
+    return this.setupPromise;
+  }
+
+  async getSetupStatus(): Promise<{ ready: boolean; installed: boolean; version?: string; path: string; binaryPath: string; error?: string }> {
+    this.initPaths();
+    try {
+      const { stdout } = await this.executeYtDlp(["--version"], 10000);
+      const bin = this.binPath || "yt-dlp";
+      return { ready: true, installed: true, version: stdout.trim(), path: bin, binaryPath: bin };
+    } catch (err: any) {
+      const bin = this.binPath || "yt-dlp";
+      return { ready: false, installed: false, path: bin, binaryPath: bin, error: err.message };
+    }
+  }
+
   private async executeYtDlp(args: string[], timeoutMs = 120000): Promise<{ stdout: string; stderr: string }> {
     this.initPaths();
     let ffmpegArg = "";
@@ -71,15 +138,12 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
     }
 
     const command = `${this.binPath} ${ffmpegArg}${args.join(" ")}`;
-    console.log(`[YtDlpMediaResolver] Executing: ${command}`);
 
     try {
       return await execAsync(command, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 });
     } catch (err: any) {
-      // Try fallback to standard yt-dlp in PATH if python -m failed
       if (this.binPath?.includes("python -m")) {
         try {
-          console.log(`[YtDlpMediaResolver] Python module execution failed. Attempting direct 'yt-dlp' binary...`);
           const directCmd = `yt-dlp ${ffmpegArg}${args.join(" ")}`;
           return await execAsync(directCmd, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 });
         } catch {
@@ -88,6 +152,72 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
       }
       throw err;
     }
+  }
+
+  private executeStreamingYtDlp(
+    args: string[],
+    onProgressLine?: (line: string, pct?: number) => void,
+    timeoutMs = 180000
+  ): Promise<void> {
+    this.initPaths();
+    let ffmpegArg: string[] = [];
+    if (this.ffmpegBinPath && fs.existsSync(this.ffmpegBinPath)) {
+      ffmpegArg = ["--ffmpeg-location", this.ffmpegBinPath];
+    }
+
+    const fullArgs = [...ffmpegArg, "--newline", ...args];
+
+    return new Promise((resolve, reject) => {
+      let cmd = (this.binPath || "yt-dlp").replace(/^"|"$/g, "");
+      let spawnArgs = fullArgs;
+
+      if (cmd.startsWith("python -m")) {
+        cmd = "python";
+        spawnArgs = ["-m", "yt_dlp", ...fullArgs];
+      }
+
+      const proc = spawn(cmd, spawnArgs, { shell: true });
+      let stderr = "";
+
+      const timer = setTimeout(() => {
+        try { proc.kill(); } catch {}
+        reject(new Error(`yt-dlp process timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
+
+      proc.stdout.on("data", (data: Buffer) => {
+        const text = data.toString();
+        const lines = text.split(/[\r\n]+/);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          const match = trimmed.match(/\[download\]\s+([\d\.]+)%/);
+          if (match) {
+            const pct = parseFloat(match[1]);
+            onProgressLine?.(trimmed, pct);
+          } else {
+            onProgressLine?.(trimmed);
+          }
+        }
+      });
+
+      proc.stderr.on("data", (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`yt-dlp exited with code ${code}: ${stderr}`));
+        }
+      });
+
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
   }
 
   private async resolveTargetUrl(validation: any, rawUrl: string): Promise<string> {
@@ -208,11 +338,27 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
       }
     }
 
-    throw new Error(
-      lastError?.message?.includes("DRM")
-        ? "This source isn't supported — it may be DRM-protected."
-        : "Couldn't read this link — check the URL or try another video"
-    );
+    throw new Error(this.parseYtDlpError(lastError));
+  }
+
+  private parseYtDlpError(err: any): string {
+    const msg = `${err?.message || ""} ${err?.stderr || ""}`.toLowerCase();
+    if (msg.includes("sign in") || msg.includes("age") || msg.includes("confirm your age") || msg.includes("inappropriate")) {
+      return "This video is age-restricted and requires sign-in. Please provide an unrestricted public link.";
+    }
+    if (msg.includes("private video") || msg.includes("video is private") || msg.includes("removed") || msg.includes("not exist") || msg.includes("deleted")) {
+      return "This media is private or has been removed by the creator.";
+    }
+    if (msg.includes("geo") || msg.includes("country") || msg.includes("region") || msg.includes("not available in your")) {
+      return "This content is not available in your region due to geographic restrictions.";
+    }
+    if (msg.includes("429") || msg.includes("too many requests") || msg.includes("rate limit")) {
+      return "Rate limited by the provider. Please wait a moment before trying again.";
+    }
+    if (msg.includes("drm") || msg.includes("copyright") || msg.includes("unsupported url")) {
+      return "This source isn't supported — it may be DRM-protected.";
+    }
+    return "Could not read this link — please check the URL or try another media source.";
   }
 
   async download(options: MediaDownloadOptions): Promise<{ filePath: string; format: string }> {
@@ -256,7 +402,18 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
           `"${targetUrl}"`,
         ];
 
-        await this.executeYtDlp(args, 180000);
+        await this.executeStreamingYtDlp(
+          args,
+          (line, pct) => {
+            if (pct !== undefined) {
+              const mapped = Math.min(90, Math.max(10, Math.round(pct)));
+              onProgress?.("DOWNLOADING", mapped, line);
+            } else if (line.includes("[download]") || line.includes("[ExtractAudio]")) {
+              onProgress?.("DOWNLOADING", 50, line);
+            }
+          },
+          180000
+        );
 
         // Verify that the output file exists and is not empty
         if (fs.existsSync(rawOutputPath)) {
@@ -300,11 +457,7 @@ export class YtDlpMediaResolver implements MediaSourceResolverPort {
       }
     }
 
-    throw new Error(
-      lastDownloadError?.message?.includes("DRM")
-        ? "This source isn't supported — it may be DRM-protected."
-        : "Couldn't read this link — check the URL or try another video"
-    );
+    throw new Error(this.parseYtDlpError(lastDownloadError));
   }
 }
 

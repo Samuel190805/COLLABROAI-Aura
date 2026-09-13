@@ -36,7 +36,7 @@ export class TranslateAndSpeakUseCase {
     private realtimePub: RealtimePublisherPort
   ) {}
 
-  async execute(input: TranslateAndSpeakInput): Promise<void> {
+  async execute(input: TranslateAndSpeakInput): Promise<{ asset: MediaAsset; translatedText: string; audioFilePath: string }> {
     const {
       jobId,
       userId,
@@ -261,6 +261,12 @@ export class TranslateAndSpeakUseCase {
         mediaAssets: [asset.toJSON()],
         updatedAt: new Date().toISOString(),
       });
+
+      return {
+        asset,
+        translatedText: finalTextToSpeak,
+        audioFilePath: finalOutputPath,
+      };
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Translation failed";
       console.error(`[TranslateAndSpeakUseCase] Error on job ${jobId}:`, err);
@@ -276,6 +282,7 @@ export class TranslateAndSpeakUseCase {
         message: errorMsg,
         updatedAt: new Date().toISOString(),
       });
+      throw err;
     }
   }
 

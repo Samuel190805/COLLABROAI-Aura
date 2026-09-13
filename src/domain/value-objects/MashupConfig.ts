@@ -1,20 +1,8 @@
 export interface StemSelection {
-  trackA: {
-    vocals: boolean;
-    drums: boolean;
-    bass: boolean;
-    other: boolean;
-    piano?: boolean;
-    guitar?: boolean;
-  };
-  trackB: {
-    vocals: boolean;
-    drums: boolean;
-    bass: boolean;
-    other: boolean;
-    piano?: boolean;
-    guitar?: boolean;
-  };
+  vocalsSource?: "A" | "B";
+  instrumentSource?: "A" | "B";
+  vocalsFrom?: "A" | "B";
+  instrumentFrom?: "A" | "B";
 }
 
 export interface CompatibilityScore {

@@ -8,7 +8,6 @@ export interface WaveformVisualizerProps {
   currentTime: number;
   duration: number;
   onSeek: (time: number) => void;
-  accentColor?: string;
   height?: number;
   className?: string;
 }
@@ -18,13 +17,11 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
   currentTime,
   duration,
   onSeek,
-  accentColor = "#0071E3",
-  height = 40,
+  height = 36,
   className,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Generate default peaks if none provided
   const peaks =
     waveformData && waveformData.length > 0
       ? waveformData
@@ -50,7 +47,7 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       onClick={handleClick}
       style={{ height }}
       className={cn(
-        "relative w-full flex items-center gap-[2px] cursor-pointer group py-1 select-none",
+        "relative w-full flex items-center gap-[2px] cursor-pointer py-1 select-none",
         className
       )}
     >
@@ -61,18 +58,20 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
         return (
           <div
             key={idx}
-            className="flex-1 rounded-full transition-all duration-75 group-hover:opacity-100"
+            className={cn(
+              "flex-1 transition-all duration-75",
+              isPlayed ? "bg-mono-ink" : "bg-mono-line"
+            )}
             style={{
-              height: `${Math.max(12, peak * 100)}%`,
-              backgroundColor: isPlayed ? accentColor : "rgba(150, 150, 150, 0.25)",
+              height: `${Math.max(10, peak * 100)}%`,
             }}
           />
         );
       })}
 
-      {/* Playhead line indicator */}
+      {/* Hairline playhead */}
       <div
-        className="absolute top-0 bottom-0 w-[2px] bg-white shadow-md pointer-events-none transition-all duration-75"
+        className="absolute top-0 bottom-0 w-[1px] bg-mono-ink pointer-events-none transition-all duration-75"
         style={{
           left: `${progressFraction * 100}%`,
         }}

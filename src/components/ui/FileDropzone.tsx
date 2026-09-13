@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from "react";
 import { cn, formatBytes } from "@/lib/utils";
-import { UploadCloud, FileAudio, FileVideo, X } from "lucide-react";
+import { Upload, FileAudio, FileVideo, X } from "lucide-react";
 
 export interface FileDropzoneProps {
   accept?: string;
@@ -16,11 +16,11 @@ export interface FileDropzoneProps {
 
 export const FileDropzone: React.FC<FileDropzoneProps> = ({
   accept = "audio/*,video/*",
-  maxSizeBytes = 200 * 1024 * 1024, // 200MB
+  maxSizeBytes = 200 * 1024 * 1024,
   onFileSelect,
   selectedFile,
-  label = "Drop audio or video file here",
-  sublabel = "Supports MP3, WAV, FLAC, MP4, MOV, MKV up to 200MB",
+  label = "Drop audio file here or browse",
+  sublabel = "Supports MP3, WAV, FLAC, M4A, MP4 up to 200MB",
   className,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -70,10 +70,10 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "relative group flex flex-col items-center justify-center p-8 rounded-3xl border-2 border-dashed transition-all duration-300 cursor-pointer text-center",
+            "relative flex flex-col items-center justify-center p-8 rounded-sm border border-dashed transition-colors duration-150 cursor-pointer text-center",
             isDragOver
-              ? "border-apple-blue bg-apple-blue/5 dark:bg-apple-blue/10 scale-[1.01]"
-              : "border-neutral-300 dark:border-white/10 hover:border-neutral-400 dark:hover:border-white/20 bg-neutral-50/50 dark:bg-neutral-900/40"
+              ? "border-mono-ink bg-mono-bgAlt"
+              : "border-mono-line hover:border-mono-ink bg-mono-bg"
           )}
         >
           <input
@@ -83,33 +83,33 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
             onChange={handleInputChange}
             className="hidden"
           />
-          <div className="w-14 h-14 rounded-2xl bg-white dark:bg-neutral-800 shadow-sm border border-neutral-200 dark:border-white/10 flex items-center justify-center text-apple-blue mb-4 group-hover:scale-105 transition-transform duration-300">
-            <UploadCloud className="w-7 h-7 stroke-[1.75]" />
+          <div className="w-10 h-10 border-hairline flex items-center justify-center text-mono-ink mb-3 rounded-sm bg-mono-bgAlt">
+            <Upload className="w-4 h-4 stroke-[1.5]" />
           </div>
-          <h4 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200 mb-1">
+          <p className="text-xs font-medium text-mono-ink mb-1">
             {label}
-          </h4>
-          <p className="text-xs text-neutral-400 dark:text-neutral-500 max-w-sm">
+          </p>
+          <p className="text-[11px] text-mono-inkMuted font-mono">
             {sublabel}
           </p>
-          {error && <p className="mt-2 text-xs text-red-500 font-medium">{error}</p>}
+          {error && <p className="mt-2 text-xs text-mono-ink font-mono">{error}</p>}
         </div>
       ) : (
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-white dark:bg-[#1C1C1E] border border-neutral-200/80 dark:border-white/10 shadow-sm">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-apple-blue/10 dark:bg-apple-blue/20 text-apple-blue flex items-center justify-center shrink-0">
+        <div className="flex items-center justify-between p-3.5 rounded-sm border-hairline bg-mono-bg">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 border-hairline flex items-center justify-center shrink-0 text-mono-ink bg-mono-bgAlt">
               {isVideo ? (
-                <FileVideo className="w-5 h-5" />
+                <FileVideo className="w-4 h-4 stroke-[1.5]" />
               ) : (
-                <FileAudio className="w-5 h-5" />
+                <FileAudio className="w-4 h-4 stroke-[1.5]" />
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+              <p className="text-xs font-medium text-mono-ink truncate">
                 {selectedFile.name}
               </p>
-              <p className="text-xs text-neutral-400 font-mono">
-                {formatBytes(selectedFile.size)} • {selectedFile.type || "audio/video"}
+              <p className="text-[11px] text-mono-inkMuted font-mono">
+                {formatBytes(selectedFile.size)} • {selectedFile.type || "audio"}
               </p>
             </div>
           </div>
@@ -119,9 +119,9 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
               onFileSelect(null);
               if (fileInputRef.current) fileInputRef.current.value = "";
             }}
-            className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+            className="p-1 border-hairline hover:border-mono-ink text-mono-inkMuted hover:text-mono-ink transition-colors"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5 stroke-[1.5]" />
           </button>
         </div>
       )}

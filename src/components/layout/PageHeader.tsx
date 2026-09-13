@@ -21,10 +21,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   return (
     <div className={cn("text-center max-w-4xl mx-auto pt-6 pb-6 px-4 relative flex flex-col items-center", className)}>
       {/* Ambient background soft glow */}
-      <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-96 h-36 bg-apple-blue/15 dark:bg-apple-blue/10 blur-[90px] rounded-full pointer-events-none -z-10" />
+      <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-96 h-36 bg-white/[0.03] blur-[100px] rounded-full pointer-events-none -z-10" />
 
       {badge && (
-        <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider text-apple-blue bg-apple-blue/10 border border-apple-blue/20 mb-4 animate-in fade-in slide-in-from-bottom-2 duration-500 shadow-sm">
+        <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-widest text-neutral-400 bg-white/5 border border-white/10 mb-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
           <span>{badge}</span>
         </div>
       )}

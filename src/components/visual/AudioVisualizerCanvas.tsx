@@ -4,18 +4,15 @@ import React, { useRef, useEffect } from "react";
 
 export interface AudioVisualizerCanvasProps {
   isPlaying: boolean;
-  audioRef?: React.RefObject<HTMLAudioElement>;
   barCount?: number;
   height?: number;
-  color?: string;
   className?: string;
 }
 
 export const AudioVisualizerCanvas: React.FC<AudioVisualizerCanvasProps> = ({
   isPlaying,
-  barCount = 36,
-  height = 48,
-  color = "#0071E3",
+  barCount = 32,
+  height = 40,
   className,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -31,23 +28,24 @@ export const AudioVisualizerCanvas: React.FC<AudioVisualizerCanvasProps> = ({
 
     const render = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const barWidth = canvas.width / barCount - 2;
+      const isDark = document.documentElement.classList.contains("dark");
+      const inkColor = isDark ? "#FAFAFA" : "#0A0A0A";
+
+      const barWidth = Math.max(2, canvas.width / barCount - 2);
 
       for (let i = 0; i < barCount; i++) {
-        let barHeight = 4;
+        let barHeight = 2;
         if (isPlaying) {
-          const sinVal = Math.sin(phase + i * 0.3) * 0.5 + 0.5;
-          const cosVal = Math.cos(phase * 1.5 + i * 0.2) * 0.5 + 0.5;
-          barHeight = Math.max(4, (sinVal * 0.6 + cosVal * 0.4) * (canvas.height - 6));
+          const sinVal = Math.sin(phase + i * 0.35) * 0.5 + 0.5;
+          const cosVal = Math.cos(phase * 1.4 + i * 0.25) * 0.5 + 0.5;
+          barHeight = Math.max(2, (sinVal * 0.6 + cosVal * 0.4) * (canvas.height - 4));
         }
 
         const x = i * (barWidth + 2);
         const y = (canvas.height - barHeight) / 2;
 
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.roundRect(x, y, barWidth, barHeight, 4);
-        ctx.fill();
+        ctx.fillStyle = inkColor;
+        ctx.fillRect(x, y, barWidth, barHeight);
       }
 
       if (isPlaying) {
@@ -62,12 +60,12 @@ export const AudioVisualizerCanvas: React.FC<AudioVisualizerCanvasProps> = ({
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, barCount, color]);
+  }, [isPlaying, barCount]);
 
   return (
     <canvas
       ref={canvasRef}
-      width={320}
+      width={280}
       height={height}
       className={className}
     />

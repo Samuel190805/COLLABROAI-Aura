@@ -16,6 +16,7 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
   { code: "ko", name: "Korean", nativeName: "한국어", flag: "🇰🇷" },
   { code: "zh", name: "Chinese (Simplified)", nativeName: "简体中文", flag: "🇨🇳" },
   { code: "zh-TW", name: "Chinese (Traditional)", nativeName: "繁體中文", flag: "🇹🇼" },
+  { code: "ta", name: "Tamil", nativeName: "தமிழ்", flag: "🇮🇳" },
   { code: "hi", name: "Hindi", nativeName: "हिन्दी", flag: "🇮🇳" },
   { code: "ar", name: "Arabic", nativeName: "العربية", flag: "🇸🇦" },
   { code: "ru", name: "Russian", nativeName: "Русский", flag: "🇷🇺" },

@@ -17,6 +17,7 @@ import { DownloadMediaUseCase } from "@/application/use-cases/DownloadMediaUseCa
 import { TranslateAndSpeakUseCase } from "@/application/use-cases/TranslateAndSpeakUseCase";
 import { DetectChordsUseCase } from "@/application/use-cases/DetectChordsUseCase";
 import { CreateMashupUseCase } from "@/application/use-cases/CreateMashupUseCase";
+import { ConvertMediaUseCase } from "@/application/use-cases/ConvertMediaUseCase";
 import { GetJobStatusUseCase } from "@/application/use-cases/GetJobStatusUseCase";
 
 class Container {
@@ -80,6 +81,14 @@ class Container {
     this.assetRepository,
     this.mediaResolver,
     this.separationProvider,
+    this.transcoder,
+    this.realtime
+  );
+
+  public readonly convertMediaUseCase = new ConvertMediaUseCase(
+    this.jobRepository,
+    this.assetRepository,
+    this.mediaResolver,
     this.transcoder,
     this.realtime
   );

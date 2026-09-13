@@ -3,7 +3,7 @@ import uuid
 import base64
 import shutil
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -13,8 +13,8 @@ from engine import engine
 
 app = FastAPI(
     title="SplitStream Separation Microservice",
-    version="1.0.0",
-    description="High-performance deep learning source separation API wrapping Demucs/Spleeter"
+    version="2.0.0",
+    description="High-performance 2-stem source separation API (Vocals & Instrument)"
 )
 
 app.add_middleware(
@@ -28,31 +28,60 @@ app.add_middleware(
 TEMP_DIR = Path("./tmp_microservice")
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
+class SeparateRequest(BaseModel):
+    input_path: str
+    output_dir: str
+    model: Optional[str] = "htdemucs_ft"
+
 @app.get("/health")
 def health_check():
     return {
         "status": "online",
-        "service": "SplitStream Source Separation Engine",
+        "service": "SplitStream 2-Stem Source Separation Engine",
         "device": engine.device,
-        "model": engine.model_name,
-        "torch_loaded": engine.model is not None,
+        "model": "Demucs v4 FT (htdemucs_ft: Vocals & Instrument)",
+        "two_stems": True,
+        "shifts": engine.shifts,
+        "overlap": engine.overlap,
     }
+
+@app.post("/separate")
+async def separate_paths(req: SeparateRequest):
+    """
+    Path-based separation endpoint sharing local job disk with Node.js host.
+    Avoids binary network transfer of large audio buffers.
+    """
+    if not os.path.exists(req.input_path):
+        raise HTTPException(status_code=400, detail=f"Input file not found: {req.input_path}")
+
+    try:
+        results = engine.separate_audio_file(req.input_path, req.output_dir)
+        return {
+            "status": "completed",
+            "model": f"Demucs v4 FT ({engine.model_name}: Vocals & Instrument)",
+            "vocals_path": results["vocals"],
+            "instrument_path": results["instrument"],
+            "engine": "demucs",
+            "shifts": engine.shifts,
+            "overlap": engine.overlap,
+            "refined": True,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Separation failed: {str(e)}")
 
 @app.get("/api/models")
 def list_models():
     return {
         "models": [
-            {"id": "htdemucs", "name": "Demucs v4 (Hybrid Transformer)", "stems": 4},
-            {"id": "htdemucs_6s", "name": "Demucs v4 (6-Stem Guitar/Piano)", "stems": 6},
-            {"id": "spleeter", "name": "Spleeter (Deezer)", "stems": 4},
+            {"id": "htdemucs_ft", "name": "Demucs v4 Fine-Tuned (Vocals / Instrument)", "stems": 2},
+            {"id": "htdemucs", "name": "Demucs v4 Base (Vocals / Instrument)", "stems": 2},
         ],
-        "default": "htdemucs",
+        "default": "htdemucs_ft",
     }
 
 @app.post("/api/separate")
 async def separate_audio(
     file: UploadFile = File(...),
-    model: Optional[str] = Form("htdemucs"),
     output_format: Optional[str] = Form("wav"),
 ):
     job_id = str(uuid.uuid4())
@@ -70,10 +99,10 @@ async def separate_audio(
     try:
         results = engine.separate_audio_file(str(input_file_path), str(output_stems_dir))
         
-        # Read stems into base64 or serve direct paths
         encoded_stems = {}
-        for stem_name, file_path in results.items():
-            if os.path.exists(file_path):
+        for stem_name in ["vocals", "instrument"]:
+            file_path = results.get(stem_name)
+            if file_path and os.path.exists(file_path):
                 with open(file_path, "rb") as sf:
                     b64 = base64.b64encode(sf.read()).decode("utf-8")
                     encoded_stems[stem_name] = f"data:audio/wav;base64,{b64}"
@@ -81,7 +110,7 @@ async def separate_audio(
         return {
             "job_id": job_id,
             "status": "completed",
-            "model": "Demucs v4 (Hybrid Transformer)",
+            "model": "Demucs v4 (2-Stem)",
             "stems": encoded_stems,
         }
     except Exception as e:
@@ -89,6 +118,8 @@ async def separate_audio(
 
 @app.get("/api/stems/{job_id}/{stem_name}")
 def download_stem(job_id: str, stem_name: str):
+    if stem_name not in ["vocals", "instrument"]:
+        raise HTTPException(status_code=400, detail="Invalid stem name. Must be 'vocals' or 'instrument'.")
     stem_file = TEMP_DIR / job_id / "stems" / f"{stem_name}.wav"
     if not stem_file.exists():
         raise HTTPException(status_code=404, detail="Stem file not found")

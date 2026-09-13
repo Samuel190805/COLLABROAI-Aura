@@ -1,22 +1,18 @@
 "use client";
 
 import React from "react";
-import { MinimalHeader } from "./MinimalHeader";
+import { TopNav } from "./TopNav";
 import { Footer } from "./Footer";
 import { GlobalAudioProvider } from "@/components/audio/GlobalAudioPlayer";
 import { ToastContainer } from "@/components/ui/Toast";
-import { AmbientAudioHorizon } from "@/components/visual/AmbientAudioHorizon";
-import { CustomCursor } from "@/components/cursor/CustomCursor";
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   return (
     <GlobalAudioProvider>
-      <div className="min-h-screen flex flex-col bg-[#000000] text-neutral-50 selection:bg-apple-blue selection:text-white relative overflow-x-hidden">
-        <CustomCursor />
-        <AmbientAudioHorizon />
-        <MinimalHeader />
+      <div className="min-h-screen flex flex-col bg-mono-bg text-mono-ink relative transition-colors duration-150">
+        <TopNav />
         <main className="flex-1 w-full flex flex-col">
           {children}
         </main>

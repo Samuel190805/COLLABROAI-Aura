@@ -3,22 +3,45 @@
 import React, { useState, useEffect } from "react";
 import {
   Activity,
-  Server,
   HardDrive,
   Cpu,
   CheckCircle2,
-  AlertCircle,
   RefreshCw,
-  Clock,
   Shield,
   Layers,
-  Sparkles,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { formatBytes } from "@/lib/utils";
+
+interface HealthData {
+  status: string;
+  disk: {
+    totalSpaceBytes: number;
+    freeSpaceBytes: number;
+    usedByAppBytes: number;
+    percentUsed: number;
+  };
+  queue: {
+    pendingJobs: number;
+    activeJobs: number;
+    completedJobs24h: number;
+    failedJobs24h: number;
+  };
+  stemsService: {
+    status: "online" | "offline";
+    engine: "demucs" | "dsp_fallback";
+    gpuAvailable: boolean;
+  };
+  retention: {
+    lastSweepTimestamp: string;
+    filesDeletedLastSweep: number;
+    bytesFreedLastSweep: number;
+  };
+}
 
 export default function StatusPage() {
-  const [healthData, setHealthData] = useState<any>(null);
+  const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
@@ -43,209 +66,201 @@ export default function StatusPage() {
   }, []);
 
   return (
-    <div className="w-full pt-28 pb-20 px-4 sm:px-6 mode-b-precision">
-      <div className="max-w-5xl mx-auto flex flex-col gap-8">
-        {/* Header Title */}
-        <div className="flex flex-col gap-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 w-fit">
-            <Activity className="w-3.5 h-3.5" />
-            <span>System Telemetry & Storage Retention</span>
+    <div className="w-full pt-28 pb-20 px-4 sm:px-6 bg-[var(--bg-primary)] font-mono">
+      <div className="max-w-5xl mx-auto flex flex-col gap-6">
+        {/* Header */}
+        <div className="flex flex-col gap-1 pb-4 border-b border-[var(--line)]">
+          <div className="flex items-center gap-2">
+            <Activity className="w-3.5 h-3.5 stroke-[1.5] text-[var(--ink-primary)]" />
+            <span className="text-[10px] uppercase tracking-wider text-[var(--ink-secondary)]">
+              System Telemetry & Health
+            </span>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
-            System Status & Health
+          <h1 className="text-xl font-bold uppercase tracking-tight text-[var(--ink-primary)]">
+            Service Health & Retention Monitor
           </h1>
-          <p className="text-sm text-neutral-400 max-w-2xl font-normal">
-            Live status of SplitStream DSP engines, neural models, storage retention discipline, and rate limiters.
+          <p className="text-xs text-[var(--ink-secondary)]">
+            Live telemetry for 2-stem DSP engines, task queue, disk utilization, and storage retention.
           </p>
         </div>
 
         {/* Top Health Overview Banner */}
-        <Card variant="glass" className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-apple">
+        <Card className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-              <CheckCircle2 className="w-6 h-6" />
+            <div className="w-8 h-8 border border-[var(--line)] flex items-center justify-center text-[var(--ink-primary)]">
+              <CheckCircle2 className="w-4 h-4 stroke-[1.5]" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-white">
-                  All Core Services Operational
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-primary)]">
+                  System Status: {healthData?.status === "ok" ? "Operational" : "Degraded"}
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400">
-                  100% HEALTHY
-                </span>
               </div>
-              <p className="text-xs text-neutral-400 font-mono mt-0.5">
-                Last checked: {lastRefreshed.toLocaleTimeString()} • Response: {healthData?.responseTimeMs || 12}ms
+              <p className="text-[10px] text-[var(--ink-secondary)] mt-0.5">
+                Refreshed: {lastRefreshed.toLocaleTimeString()} • Polling: 15s interval
               </p>
             </div>
           </div>
 
           <Button
-            variant="glass"
+            variant="secondary"
             size="sm"
             onClick={fetchHealth}
             isLoading={isLoading}
-            className="text-xs flex items-center gap-1.5"
+            className="text-xs h-7 px-2 font-mono"
           >
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh Telemetry
+            <RefreshCw className="w-3 h-3 mr-1 stroke-[1.5]" /> Refresh
           </Button>
         </Card>
 
-        {/* Services Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Audio & Video Processing Engines */}
-          <Card variant="glass" className="p-6 flex flex-col gap-4">
-            <div className="flex items-center gap-2 pb-3 border-b border-white/10 text-white font-bold text-sm">
-              <Cpu className="w-4 h-4 text-apple-blue" />
-              <span>Audio & DSP Processing</span>
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Disk & App Storage (Section 4.8.3) */}
+          <Card className="p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--line)]">
+              <div className="flex items-center gap-2">
+                <HardDrive className="w-3.5 h-3.5 stroke-[1.5] text-[var(--ink-primary)]" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-primary)]">
+                  Disk & Application Storage
+                </h4>
+              </div>
+              <span className="text-[10px] text-[var(--ink-secondary)]">
+                {healthData?.disk?.percentUsed ?? 0}% Full
+              </span>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
-                <div>
-                  <p className="text-xs font-bold text-neutral-200">
-                    FFmpeg / FFprobe Core
-                  </p>
-                  <p className="text-[10px] text-neutral-400 font-mono">
-                    {healthData?.services?.ffmpeg?.version || "FFmpeg Lossless Muxer"}
-                  </p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400">
-                  Active
+            {/* Storage Meter */}
+            <div className="w-full h-1.5 bg-[var(--line)] overflow-hidden">
+              <div
+                className="h-full bg-[var(--ink-primary)] transition-all duration-300"
+                style={{ width: `${healthData?.disk?.percentUsed || 0}%` }}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[9px] uppercase text-[var(--ink-secondary)] block">Free Disk</span>
+                <span className="text-xs font-bold text-[var(--ink-primary)]">
+                  {healthData?.disk?.freeSpaceBytes ? formatBytes(healthData.disk.freeSpaceBytes) : "—"}
                 </span>
               </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
-                <div>
-                  <p className="text-xs font-bold text-neutral-200">
-                    Demucs Neural Source Separation
-                  </p>
-                  <p className="text-[10px] text-neutral-400 font-mono">
-                    Hybrid HTDemucs 6-Stem + Spectral Ensemble
-                  </p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400">
-                  Active
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
-                <div>
-                  <p className="text-xs font-bold text-neutral-200">
-                    Loudness Normalizer (LUFS)
-                  </p>
-                  <p className="text-[10px] text-neutral-400 font-mono">
-                    EBU R128 Dual-Pass Target -14 LUFS
-                  </p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400">
-                  Active
+              <div className="p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[9px] uppercase text-[var(--ink-secondary)] block">Used By App</span>
+                <span className="text-xs font-bold text-[var(--ink-primary)]">
+                  {healthData?.disk?.usedByAppBytes ? formatBytes(healthData.disk.usedByAppBytes) : "0 MB"}
                 </span>
               </div>
             </div>
           </Card>
 
-          {/* AI Voice & Language Engines */}
-          <Card variant="glass" className="p-6 flex flex-col gap-4">
-            <div className="flex items-center gap-2 pb-3 border-b border-white/10 text-white font-bold text-sm">
-              <Sparkles className="w-4 h-4 text-indigo-400" />
-              <span>AI Voice & Speech Engines</span>
+          {/* Job Queue Status (Section 4.8.3) */}
+          <Card className="p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-[var(--line)]">
+              <Layers className="w-3.5 h-3.5 stroke-[1.5] text-[var(--ink-primary)]" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-primary)]">
+                Task Queue & Throughput
+              </h4>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
-                <div>
-                  <p className="text-xs font-bold text-neutral-200">
-                    Whisper ASR Speech Recognition
-                  </p>
-                  <p className="text-[10px] text-neutral-400 font-mono">
-                    {healthData?.services?.whisperASR?.engine || "OpenAI Whisper Engine"}
-                  </p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400">
-                  Active
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+              <div className="p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[9px] uppercase text-[var(--ink-secondary)] block">Pending</span>
+                <span className="text-xs font-bold text-[var(--ink-primary)]">
+                  {healthData?.queue?.pendingJobs ?? 0}
                 </span>
               </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
-                <div>
-                  <p className="text-xs font-bold text-neutral-200">
-                    Neural TTS & Formant Shaper
-                  </p>
-                  <p className="text-[10px] text-neutral-400 font-mono">
-                    Voice-Preserving Timbre & Pitch Clone
-                  </p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400">
-                  Active
+              <div className="p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[9px] uppercase text-[var(--ink-secondary)] block">Active</span>
+                <span className="text-xs font-bold text-[var(--ink-primary)]">
+                  {healthData?.queue?.activeJobs ?? 0}
                 </span>
               </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
-                <div>
-                  <p className="text-xs font-bold text-neutral-200">
-                    Fair-Use Rate Limiter
-                  </p>
-                  <p className="text-[10px] text-neutral-400 font-mono">
-                    {healthData?.services?.rateLimiter?.activeTrackedClients || 0} active clients monitored
-                  </p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400">
-                  Enforcing
+              <div className="p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[9px] uppercase text-[var(--ink-secondary)] block">Done 24h</span>
+                <span className="text-xs font-bold text-[var(--ink-primary)]">
+                  {healthData?.queue?.completedJobs24h ?? 0}
+                </span>
+              </div>
+              <div className="p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[9px] uppercase text-[var(--ink-secondary)] block">Failed 24h</span>
+                <span className="text-xs font-bold text-[var(--ink-primary)]">
+                  {healthData?.queue?.failedJobs24h ?? 0}
                 </span>
               </div>
             </div>
           </Card>
         </div>
 
-        {/* Storage Retention & Discipline Section */}
-        <Card variant="glass" className="p-6 flex flex-col gap-5">
-          <div className="flex items-center gap-2 pb-3 border-b border-white/10 text-white font-bold text-sm">
-            <HardDrive className="w-4 h-4 text-emerald-400" />
-            <span>Storage Retention & Bloat Prevention System</span>
-          </div>
+        {/* Engine & Retention Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Separation Microservice / Fallback */}
+          <Card className="p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-[var(--line)]">
+              <Cpu className="w-3.5 h-3.5 stroke-[1.5] text-[var(--ink-primary)]" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-primary)]">
+                Stem Separation Engine
+              </h4>
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/5 text-center">
-              <span className="text-[10px] font-mono text-neutral-400 uppercase">
-                Managed Storage Size
-              </span>
-              <div className="text-2xl font-extrabold text-white mt-1">
-                {healthData?.storageRetention?.managedStorageFormatted || "0 MB"}
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[10px] uppercase text-[var(--ink-secondary)]">Microservice</span>
+                <span className="font-bold text-[var(--ink-primary)]">
+                  {healthData?.stemsService?.status?.toUpperCase() || "OFFLINE"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[10px] uppercase text-[var(--ink-secondary)]">Active Engine</span>
+                <span className="font-bold text-[var(--ink-primary)]">
+                  {healthData?.stemsService?.engine === "demucs"
+                    ? "Demucs 2-Stem (FastAPI)"
+                    : "DSP Center-Channel Fallback"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[10px] uppercase text-[var(--ink-secondary)]">GPU Acceleration</span>
+                <span className="font-bold text-[var(--ink-primary)]">
+                  {healthData?.stemsService?.gpuAvailable ? "Enabled" : "Disabled (CPU)"}
+                </span>
               </div>
             </div>
+          </Card>
 
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/5 text-center">
-              <span className="text-[10px] font-mono text-neutral-400 uppercase">
-                Managed Output Files
-              </span>
-              <div className="text-2xl font-extrabold text-white mt-1">
-                {healthData?.storageRetention?.managedFilesCount || 0} files
+          {/* Retention Sweep (Section 4.8.3) */}
+          <Card className="p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-[var(--line)]">
+              <Shield className="w-3.5 h-3.5 stroke-[1.5] text-[var(--ink-primary)]" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--ink-primary)]">
+                Storage Retention Sweep (24h)
+              </h4>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[10px] uppercase text-[var(--ink-secondary)]">Last Sweep</span>
+                <span className="text-[10px] text-[var(--ink-primary)]">
+                  {healthData?.retention?.lastSweepTimestamp
+                    ? new Date(healthData.retention.lastSweepTimestamp).toLocaleTimeString()
+                    : "Active"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[10px] uppercase text-[var(--ink-secondary)]">Deleted Last Sweep</span>
+                <span className="font-bold text-[var(--ink-primary)]">
+                  {healthData?.retention?.filesDeletedLastSweep ?? 0} files
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-2 border border-[var(--line)] bg-[var(--bg-secondary)]">
+                <span className="text-[10px] uppercase text-[var(--ink-secondary)]">Freed Last Sweep</span>
+                <span className="font-bold text-[var(--ink-primary)]">
+                  {healthData?.retention?.bytesFreedLastSweep
+                    ? formatBytes(healthData.retention.bytesFreedLastSweep)
+                    : "0 MB"}
+                </span>
               </div>
             </div>
-
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/5 text-center">
-              <span className="text-[10px] font-mono text-neutral-400 uppercase">
-                Active Working Jobs
-              </span>
-              <div className="text-2xl font-extrabold text-emerald-400 mt-1">
-                {healthData?.storageRetention?.activeWorkingJobs || 0}
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 flex items-start gap-3">
-            <Shield className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-            <div>
-              <h5 className="text-xs font-bold text-white">
-                Storage Discipline Policy Active
-              </h5>
-              <p className="text-[11px] text-neutral-400 mt-0.5">
-                All intermediate audio stems, raw downloads, stretched chunks, and diarized segments are deleted immediately after job completion. Zero files are written to unmanaged public paths.
-              </p>
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
       </div>
     </div>
   );

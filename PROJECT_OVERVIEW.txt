@@ -1,0 +1,706 @@
+================================================================================
+                    SPLITSTREAM (AURA-SPLITSTREAM)
+       COMPREHENSIVE PROJECT ARCHITECTURE, WORKING & TECH STACK OVERVIEW
+================================================================================
+
+Date of Generation: September 2026
+Project Name: SplitStream (Aura-SplitStream)
+Architecture Pattern: Clean Architecture (Hexagonal / Ports & Adapters) + DDD
+UI Design System: Apple-Inspired Glassmorphic Dark Design System
+Platform: Full-Stack Web Application + Python Deep Learning Microservice
+
+================================================================================
+1. EXECUTIVE SUMMARY & PURPOSE
+================================================================================
+
+SplitStream is an autonomous, studio-grade AI audio and video media workstation
+designed for musicians, producers, sound engineers, linguists, and media creators.
+It unifies state-of-the-art neural music source separation, lossless link
+extraction, speech-to-speech multilingual translation, harmonic mashup synthesis,
+AI chord detection, and local-first media playback into a unified, zero-telemetry
+environment.
+
+Key Highlights:
+- Six Core Capabilities: Stem Separation, Link Downloader, Translate & Speak,
+  Mashup Studio, AI Chord Detector, and Local-First Media Players (Audio & Video).
+- Clean Architecture (Hexagonal): Complete decoupling of domain logic, use cases,
+  infrastructure adapters, and external ML/AI providers.
+- Output Integrity Verification: Strict post-processing pipeline using FFmpeg
+  transcoding and deterministic FFprobe stream inspection to ensure zero corrupt
+  or malformed files.
+- Zero-Bloat Storage Discipline: Automated lifecycle retention manager to clean up
+  intermediate audio slices and enforce temporary storage limits.
+- Real-Time SSE Job Bus: Server-Sent Events (SSE) powering live progress bars,
+  stage transitions (Analysis -> Inference -> Reconstruction -> Export), and
+  instant updates without client-side polling.
+
+
+================================================================================
+2. TECHNOLOGY STACK MATRIX
+================================================================================
+
+--------------------------------------------------------------------------------
+A. CORE RUNTIME & FRAMEWORKS
+--------------------------------------------------------------------------------
+- Next.js 16 (App Router): React server/client components, API routes, streaming SSE.
+- React 18 / 19: Declarative component architecture with concurrent rendering.
+- Node.js (v18+ / v20+ / v24+): Backend runtime for API endpoints and workers.
+- Python 3.10+ & FastAPI: Dedicated ML microservice for heavy deep neural networks.
+- TypeScript 5.7+: End-to-end static type safety across domain, application, and UI.
+
+--------------------------------------------------------------------------------
+B. DATABASE, ORM & AUTHENTICATION
+--------------------------------------------------------------------------------
+- SQLite: Embedded relational database for lightweight, zero-configuration persistence.
+- Prisma ORM 5.22+: Type-safe schema definition, automated migrations, and client querying.
+- NextAuth.js 4.24+: Session management, JWT/Database session strategies, and OAuth/Credentials.
+- bcryptjs 2.4.3: Secure one-way salt and hashing for user passwords.
+
+--------------------------------------------------------------------------------
+C. AUDIO / VIDEO PROCESSING & DSP
+--------------------------------------------------------------------------------
+- Fluent-FFmpeg (Node.js wrapper): Server-side transcoding, resampling, and channel mixing.
+- ffmpeg-static (v5.2.0) & ffprobe-static (v3.1.0): Self-contained binaries for codec
+  encoding, bitstream validation, loudness normalization, and waveform generation.
+- Web Audio API (Browser Native):
+  * AudioContext, AnalyserNode, GainNode, StereoPannerNode, BiquadFilterNode.
+  * Real-time 10-Band Graphic Equalizer, vinyl turntable audio graph, and canvas visualizers.
+- DSP Decomposition Engine: In-memory fallback harmonic/percussive spectrogram
+  decomposition and phase-cancellation filtering if Python ML service is offline.
+- yt-dlp: Universal remote media stream extraction and metadata resolution.
+
+--------------------------------------------------------------------------------
+D. ARTIFICIAL INTELLIGENCE & MACHINE LEARNING
+--------------------------------------------------------------------------------
+- Meta AI Demucs v4 (Hybrid Transformer - htdemucs & htdemucs_6s):
+  State-of-the-art music source separation (Vocals, Drums, Bass, Other, Guitar, Piano).
+- Deezer Spleeter: Fast 4-stem and 5-stem neural source separator.
+- OpenAI Whisper (ASR): Robust automatic speech recognition and speech-to-text.
+- Neural Machine Translation (MT): Multilingual neural translation supporting 30+ languages.
+- Neural Text-to-Speech (TTS): Natural speech synthesis with pitch and cadence controls.
+- Harmonic Chromagram & Key Analysis: Real-time chroma feature extraction, Camelot Wheel
+  harmonic key collision scoring, and BPM detection.
+
+--------------------------------------------------------------------------------
+E. FRONTEND STYLING, ANIMATION & UI
+--------------------------------------------------------------------------------
+- Tailwind CSS 3.4+: Utility-first styling configured with custom Apple dark-mode tokens.
+- Framer Motion 11.18+: High-performance spring physics, layout animations, and gestures.
+- Lucide React (v0.468): Streamlined modern icon set.
+- IndexedDB (Client-side): Local-first browser storage for user playlists and audio files.
+- Canvas API: Real-time 60fps audio waveform, frequency spectrum, and vinyl animations.
+- clsx & tailwind-merge: Conditional class name compositions.
+
+--------------------------------------------------------------------------------
+F. TESTING & CODE QUALITY
+--------------------------------------------------------------------------------
+- ESLint 9 & TypeScript-ESLint: Code quality enforcement and strict type checking.
+- PostCSS & Autoprefixer: Cross-browser CSS compatibility.
+
+
+================================================================================
+3. CLEAN ARCHITECTURE (HEXAGONAL / PORTS & ADAPTERS)
+================================================================================
+
+SplitStream strictly isolates business logic from third-party tools, frameworks,
+and storage engines using Domain-Driven Design (DDD) and Clean Architecture:
+
+                          +-----------------------------------+
+                          |     PRESENTATION / UI LAYER       |
+                          | (Next.js App Router, Pages, UI)   |
+                          +-----------------+-----------------+
+                                            |
+                                            v
+                          +-----------------+-----------------+
+                          |        APPLICATION LAYER          |
+                          |  Use Cases & Dependency Ports     |
+                          +-----------------+-----------------+
+                                            |
+                                            v
+                          +-----------------+-----------------+
+                          |          DOMAIN LAYER             |
+                          | Entities, Value Objects, Events   |
+                          +-----------------+-----------------+
+                                            ^
+                                            | (Implements Ports)
+                          +-----------------+-----------------+
+                          |      INFRASTRUCTURE LAYER         |
+                          | Prisma, FFmpeg, JobQueue, SSE     |
+                          +-----------------------------------+
+                          |        PROVIDERS LAYER            |
+                          | FastAPI Client, Whisper, yt-dlp   |
+                          +-----------------------------------+
+
+--------------------------------------------------------------------------------
+1. Domain Layer (`src/domain/`)
+--------------------------------------------------------------------------------
+- Pure business logic free of any framework dependencies or external libraries.
+- Entities:
+  * `Job`: Represents asynchronous media jobs with status, stages, and progress.
+  * `MediaAsset`: Represents processed files (stems, downloads, waveforms, tracks).
+  * `User`: Application user profile and security credentials.
+- Value Objects:
+  * `MediaFormats`: Defines audio formats (MP3, WAV, FLAC, M4A, AAC, OGG), video formats
+    (MP4, WEBM, MKV), bitrates, codecs, and container constraints.
+  * `ChordData`: Chromatic scale definitions, chord fingerings for Guitar/Ukulele/Piano,
+    transposition algorithms, and smart capo calculation.
+  * `MashupConfig`: Camelot Wheel harmonic calculation, wheel distance scoring,
+    tempo stretch warnings, and pitch-shift semitone clamping.
+  * `SupportedLanguages`: Metadata and native flags for 30+ translation languages.
+  * `SourceUrlValidator`: Whitelisting and URL validation for YouTube, SoundCloud, etc.
+- Repository Interfaces:
+  * `IJobRepository`, `IAssetRepository`, `IUserRepository`.
+
+--------------------------------------------------------------------------------
+2. Application Layer (`src/application/`)
+--------------------------------------------------------------------------------
+- Orchestrates domain entities to execute user intentions via use cases.
+- Use Cases:
+  * `SeparateStemsUseCase`: Executes multi-track source separation (4 or 6 stems).
+  * `DownloadMediaUseCase`: Downloads remote media, transcodes, and validates codecs.
+  * `TranslateAndSpeakUseCase`: Orchestrates ASR -> MT -> TTS speech pipeline.
+  * `CreateMashupUseCase`: Combines stems from two tracks with key & BPM synchronization.
+  * `DetectChordsUseCase`: Isolates harmonic stems and extracts chord progressions.
+  * `GetJobStatusUseCase`: Retrieves job execution status and associated media assets.
+- Ports (Interfaces):
+  * `SeparationProviderPort`, `MediaSourceResolverPort`, `ASRProviderPort`,
+    `TranslationProviderPort`, `TTSProviderPort`, `ChordDetectorPort`,
+    `TranscoderPort`, `RealtimePublisherPort`, `QueuePort`.
+
+--------------------------------------------------------------------------------
+3. Infrastructure Layer (`src/infrastructure/`)
+--------------------------------------------------------------------------------
+- Implements ports with real libraries, database drivers, and operating system tools.
+- `persistence/prisma/`: Concrete Prisma SQLite implementations of domain repositories.
+- `media/transcoder.ts`: FFmpeg wrapper for multi-track mixing, pitch shifting, tempo
+  stretching, loudness normalization, and FFprobe stream verification.
+- `queue/job-queue.ts`: In-process asynchronous job queue managing concurrency.
+- `realtime/realtime-bus.ts`: Event emitter and SSE broadcasting channel for live updates.
+- `storage/retention-manager.ts`: Storage scanner, cleanup coordinator, and disk monitor.
+
+--------------------------------------------------------------------------------
+4. Providers Layer (`src/providers/`)
+--------------------------------------------------------------------------------
+- Concrete adapters for external APIs, ML engines, and CLI tools.
+- `separation/SeparationClient.ts`: Connects to FastAPI Demucs microservice with seamless
+  automatic fallback to built-in DSP engine if the service is unreachable.
+- `media-resolver/YtDlpMediaResolver.ts`: Spawns yt-dlp child processes to extract audio/video.
+- `asr/WhisperASRProvider.ts`: Whisper integration for high-accuracy speech transcription.
+- `translation/NeuralTranslationProvider.ts`: Multi-language neural translation provider.
+- `tts/NeuralTTSProvider.ts`: Edge/neural text-to-speech voice generation.
+- `chords/ChordDetectorProvider.ts`: Harmonic spectral frequency analysis and chord mapping.
+
+--------------------------------------------------------------------------------
+5. Dependency Injection Container (`src/lib/container.ts`)
+--------------------------------------------------------------------------------
+- A centralized Singleton DI container that instantiates and injects all repositories,
+  infrastructure adapters, providers, and use cases, ensuring clean testability and
+  loose coupling across the entire codebase.
+
+
+================================================================================
+4. DETAILED FEATURE BREAKDOWN & HOW THEY WORK
+================================================================================
+
+--------------------------------------------------------------------------------
+FEATURE 1: STEM SEPARATOR (AI SOURCE SEPARATION)
+--------------------------------------------------------------------------------
+- Purpose: Isolates an audio track into discrete studio stems.
+- Stem Categories:
+  * 4-Stem Mode: Vocals, Drums, Bass, Other (Melodic instruments).
+  * 6-Stem Mode: Vocals, Drums, Bass, Guitar, Piano, Other.
+  * Instrumental / Karaoke Mode: Complete backing track with Vocals removed.
+- Pipeline Workflow:
+  1. User uploads audio file or enters a remote URL.
+  2. Input file is saved to job directory and validated via FFprobe.
+  3. Job progress is streamed via SSE across 4 explicit stages:
+     - `ANALYSIS`: Validates audio format, duration, channels, and sample rate.
+     - `MODEL_INFERENCE`: Dispatches audio to Meta Demucs v4 Hybrid Transformer
+       microservice (or executes DSP spectrogram decomposition).
+     - `STEM_RECONSTRUCTION`: Slices, reconstructs, and balances individual stem files.
+     - `EXPORT`: Normalizes loudness, creates waveform peak arrays, and writes MP3/WAV/FLAC.
+  4. Interactive StemMixer:
+     - Real-time Multi-Track Web Audio player.
+     - Individual Solo and Mute switches per track.
+     - Rotary Pan knobs (-100% Left to +100% Right) and Volume Faders (-inf to +6dB).
+     - Synchronized scrubbing and live VU meter level indicators.
+     - Download individual stems or export mixed master.
+
+--------------------------------------------------------------------------------
+FEATURE 2: LINK DOWNLOADER (REMOTE MEDIA EXTRACTION)
+--------------------------------------------------------------------------------
+- Purpose: Direct server-side extraction and conversion from YouTube & media links.
+- Capabilities:
+  - Instant Metadata Preview: Fetches title, thumbnail URL, channel/author, duration,
+    and available resolutions before initiating download.
+  - Audio Extraction: Transcodes stream to MP3 (128k, 192k, 256k, 320k), WAV, FLAC, M4A, AAC, OGG.
+  - Video Extraction: Downloads full video container in MP4, WEBM, MKV (1080p, 720p, 480p, 360p).
+  - Output Integrity: Post-processes downloaded streams with FFmpeg and runs FFprobe
+    verification to guarantee complete container integrity before serving to user.
+  - Quick Actions: One-click handoff to Stem Separator, Chord Detector, or Mashup Studio.
+
+--------------------------------------------------------------------------------
+FEATURE 3: TRANSLATE & SPEAK (SPEECH-TO-SPEECH TRANSLATION)
+--------------------------------------------------------------------------------
+- Purpose: Real-time voice translation pipeline converting speech from one language to another.
+- Input Options:
+  1. Live Microphone Recording: Browser `MediaRecorder` with noise cancellation and live wave visualizer.
+  2. Audio File Upload: Pre-recorded audio in MP3, WAV, M4A, AAC.
+  3. Typed Text Input: Direct textual translation without audio input.
+- Processing Pipeline:
+  - Step 1 (ASR): OpenAI Whisper transcribes source speech into high-precision text.
+  - Step 2 (Neural MT): Neural machine translation engine translates text into target language
+    (supports 30+ global languages: English, Spanish, French, German, Japanese, Hindi, Arabic, etc.).
+  - Step 3 (Neural TTS): High-fidelity voice synthesizer generates spoken audio in target language.
+- Interactive Interface:
+  - Bilingual comparison cards displaying side-by-side original and translated scripts.
+  - Inline text editor to refine transcription before synthesizing audio.
+  - Audio playback controls for both original voice and synthetic translation.
+
+--------------------------------------------------------------------------------
+FEATURE 4: MASHUP STUDIO (HARMONIC DJ MIXING & MERGING)
+--------------------------------------------------------------------------------
+- Purpose: Combines individual stems from two different tracks into a unified harmonic mashup.
+- Capabilities:
+  - Dual Track Ingestion: Upload two audio files or paste two streaming URLs (Track A and Track B).
+  - Neural Separation of Both Tracks: Deconstructs Track A and Track B into stems.
+  - Camelot Wheel Harmonic Analysis:
+    * Calculates musical key (e.g., 8A / A Minor) and BPM for both tracks.
+    * Computes Camelot compatibility score (0-100%) and energy shift profile.
+    * Automatic Key Matching: Calculates optimal semitone pitch shift (+/- 4 semitones max
+      to prevent unnatural artifacts).
+    * Automatic Tempo Synchronization: Time-stretches stems to unified target BPM.
+  - Stem Assignment Matrix: Toggle which stems to retain from Track A (e.g., Vocals) and
+    which to take from Track B (e.g., Drums + Bass + Instruments).
+  - Real-time Master Rendering: FFmpeg mixes active stems with crossfading and loudness normalization.
+
+--------------------------------------------------------------------------------
+FEATURE 5: AI CHORD DETECTOR & PRACTICE
+--------------------------------------------------------------------------------
+- Purpose: Analyzes music audio to extract chords, BPM, key, and guitar/piano fingerings.
+- Capabilities:
+  - Harmonic Stem Isolation: Automatically separates bass and melodic instruments to eliminate
+    drum transients and noise, ensuring cleaner chord frequency recognition.
+  - Chromagram Spectral Analysis: Analyzes harmonic pitch classes over time and matches against
+    major, minor, 7th, maj7, min7, dim, and sus4 chord structures.
+  - Interactive Chord Sheet: Timeline-synchronized chord cards highlighting active chords in real time.
+  - Instrument Fingering Diagrams: Visual fretboard diagrams for Guitar and Ukulele, plus
+    illuminated key diagrams for Piano.
+  - Smart Capo Recommendation: Suggests the ideal guitar capo position to play in easy open chords.
+  - Live Mic Practice Mode: Listens through user microphone, analyzes incoming pitch in real time,
+    and provides visual feedback when correct chords are played.
+
+--------------------------------------------------------------------------------
+FEATURE 6: LOCAL-FIRST AUDIO PLAYER
+--------------------------------------------------------------------------------
+- Purpose: Zero-telemetry, browser-based audiophile playback for local audio libraries.
+- Capabilities:
+  - IndexedDB Persistence: Stores tracks and playlists in browser storage without uploading to servers.
+  - 10-Band Graphic Equalizer: 32Hz, 64Hz, 125Hz, 250Hz, 500Hz, 1kHz, 2kHz, 4kHz, 8kHz, 16kHz
+    biquad peaking filters with presets (Flat, Bass Boost, Vocal Enhance, Treble Boost, Acoustic, Electronic).
+  - Turntable Vinyl Animation: Canvas-rendered 33 RPM spinning vinyl disc with tonearm physics.
+  - Synced Lyrics View: Displays LRC synchronized lyrics with smooth auto-scroll.
+  - Ambient Horizon Canvas: Dynamic real-time Web Audio API frequency spectrum analyzer.
+  - Playlist Queue, Shuffle, Loop modes, and keyboard shortcut navigation.
+
+--------------------------------------------------------------------------------
+FEATURE 7: VIDEO PLAYER (LOCAL & YOUTUBE)
+--------------------------------------------------------------------------------
+- Purpose: Dual-mode video player supporting both local video files and YouTube streams.
+- Capabilities:
+  - Seamless toggle between local MP4/WEBM/MKV video playback and official YouTube embed engine.
+  - Theater mode, Picture-in-Picture (PiP), and full-screen controls.
+  - Variable speed controls (0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 2.0x).
+  - Quick action buttons to immediately send the playing video to Downloader or Stem Separator.
+
+--------------------------------------------------------------------------------
+FEATURE 8: ZERO-BLOAT STORAGE RETENTION MANAGER
+--------------------------------------------------------------------------------
+- Purpose: Ensures the server never runs out of disk space from large audio/video jobs.
+- Automated Cleanup:
+  * Working directories (`tmp/jobs/<jobId>`) are automatically swept after job completion.
+  * Time-based expiration sweep deletes orphaned intermediate slices older than 24 hours.
+  * System health endpoint (`/api/health`) reports active disk usage, file count, and storage size.
+
+
+================================================================================
+5. DATABASE SCHEMA (PRISMA / SQLITE)
+================================================================================
+
+The database is defined in `prisma/schema.prisma` and contains 6 models:
+
+1. User
+   - `id`: String (Primary Key, CUID)
+   - `name`: String (Optional)
+   - `email`: String (Unique)
+   - `emailVerified`: DateTime (Optional)
+   - `image`: String (Optional)
+   - `passwordHash`: String (Bcrypt hash)
+   - `createdAt`, `updatedAt`: DateTime
+   - Relations: `jobs` (Job[]), `mediaAssets` (MediaAsset[]), `accounts` (Account[]), `sessions` (Session[])
+
+2. Job
+   - `id`: String (Primary Key, CUID)
+   - `userId`: String (Foreign Key -> User.id, Optional, OnDelete: SetNull)
+   - `type`: String (STEM_SEPARATION | MEDIA_DOWNLOAD | TRANSLATE_SPEAK | CHORD_DETECTION | MASHUP)
+   - `status`: String (PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED)
+   - `stage`: String (ANALYSIS | MODEL_INFERENCE | STEM_RECONSTRUCTION | EXPORT)
+   - `progress`: Float (0.0 to 100.0)
+   - `message`: String (Human-readable status text)
+   - `inputParams`: String (JSON payload containing input parameters)
+   - `error`: String (Optional error details)
+   - `createdAt`, `updatedAt`, `completedAt`: DateTime
+   - Relations: `mediaAssets` (MediaAsset[])
+
+3. MediaAsset
+   - `id`: String (Primary Key, CUID)
+   - `jobId`: String (Foreign Key -> Job.id, Cascade Delete)
+   - `userId`: String (Foreign Key -> User.id, Optional, OnDelete: SetNull)
+   - `name`: String (Filename or display title)
+   - `kind`: String (ORIGINAL | STEM_VOCALS | STEM_DRUMS | STEM_BASS | STEM_OTHER |
+                    STEM_INSTRUMENTAL | DOWNLOAD_AUDIO | DOWNLOAD_VIDEO | TRANSLATED_AUDIO | MASHUP)
+   - `filePath`: String (Absolute server filesystem path)
+   - `mimeType`: String (e.g., audio/mpeg, audio/wav, video/mp4)
+   - `format`: String (mp3, wav, flac, m4a, mp4, webm, etc.)
+   - `codec`: String (aac, pcm_s16le, h264, etc.)
+   - `duration`: Float (Length in seconds)
+   - `sizeBytes`: Int (File size)
+   - `waveformData`: String (JSON stringified array of float peak values [0..1])
+   - `metadata`: String (JSON string of tags, BPM, key, etc.)
+   - `createdAt`: DateTime
+
+4. Account
+   - Standard NextAuth OAuth account link model (userId, provider, providerAccountId, tokens).
+
+5. Session
+   - NextAuth database session model (sessionToken, userId, expires).
+
+6. VerificationToken
+   - NextAuth magic link and email verification token model (identifier, token, expires).
+
+
+================================================================================
+6. COMPLETE REST & SSE API SPECIFICATIONS
+================================================================================
+
+--------------------------------------------------------------------------------
+1. STEM SEPARATION
+--------------------------------------------------------------------------------
+- POST /api/stems/separate
+  * Description: Starts stem separation job for an uploaded audio file or remote URL.
+  * Form Data / JSON:
+    - `file`: Audio File (Optional if URL provided)
+    - `url`: String (Optional if File uploaded)
+    - `model`: "htdemucs" | "htdemucs_6s" | "spleeter" (Default: "htdemucs")
+    - `outputFormat`: "mp3" | "wav" | "flac" (Default: "mp3")
+  * Response (200 OK):
+    `{ "jobId": "cuid...", "status": "PENDING", "message": "Job queued" }`
+
+--------------------------------------------------------------------------------
+2. LINK DOWNLOADER
+--------------------------------------------------------------------------------
+- POST /api/download/preview
+  * Description: Fetches metadata preview (title, thumbnail, duration, author) for a URL.
+  * JSON: `{ "url": "https://..." }`
+  * Response (200 OK):
+    `{ "title": "...", "thumbnail": "...", "duration": 210, "author": "..." }`
+
+- POST /api/download
+  * Description: Triggers download and transcoding of remote media.
+  * JSON:
+    - `url`: String (Required)
+    - `mediaType`: "audio" | "video"
+    - `format`: "mp3" | "wav" | "flac" | "m4a" | "mp4" | "webm"
+    - `quality`: "128k" | "192k" | "256k" | "320k" | "1080p" | "720p" | "best"
+  * Response (200 OK):
+    `{ "jobId": "cuid...", "status": "PENDING" }`
+
+--------------------------------------------------------------------------------
+3. TRANSLATE & SPEAK
+--------------------------------------------------------------------------------
+- POST /api/translate
+  * Description: Executes ASR transcription, Neural MT, and TTS voice synthesis.
+  * Form Data / JSON:
+    - `file`: Audio File (Optional)
+    - `text`: String (Optional direct text input)
+    - `sourceLanguage`: String (e.g. "en", "auto")
+    - `targetLanguage`: String (e.g. "es", "fr", "ja", "de")
+    - `voiceProfile`: String ("natural" | "expressive" | "calm")
+  * Response (200 OK):
+    `{ "jobId": "cuid...", "status": "PENDING" }`
+
+--------------------------------------------------------------------------------
+4. MASHUP STUDIO
+--------------------------------------------------------------------------------
+- POST /api/mashup
+  * Description: Blends selected stems from two tracks with key & BPM synchronization.
+  * JSON:
+    - `trackA`: `{ "type": "file"|"url", "filePath": "...", "url": "..." }`
+    - `trackB`: `{ "type": "file"|"url", "filePath": "...", "url": "..." }`
+    - `selection`: `{ "trackA": { "vocals": true... }, "trackB": { "drums": true... } }`
+    - `autoKeyMatch`: boolean
+    - `autoTempoMatch`: boolean
+    - `targetBpm`: number
+    - `outputFormat`: "mp3" | "wav" | "flac"
+  * Response (200 OK):
+    `{ "jobId": "cuid...", "status": "PENDING" }`
+
+--------------------------------------------------------------------------------
+5. CHORD DETECTION
+--------------------------------------------------------------------------------
+- POST /api/chords
+  * Description: Analyzes audio for musical key, BPM, and time-stamped chord events.
+  * JSON:
+    - `inputType`: "file" | "url"
+    - `filePath`: String (Optional)
+    - `url`: String (Optional)
+  * Response (200 OK):
+    `{ "jobId": "cuid...", "status": "PENDING" }`
+
+--------------------------------------------------------------------------------
+6. JOBS, REALTIME SSE & ASSET SERVING
+--------------------------------------------------------------------------------
+- GET /api/jobs/[id]
+  * Description: Retrieves current status, progress %, stage, and resulting assets of a job.
+  * Response (200 OK):
+    `{ "job": { "id": "...", "status": "COMPLETED", "progress": 100, "stage": "EXPORT", ... }, "assets": [...] }`
+
+- GET /api/realtime?jobId=[id]
+  * Description: Server-Sent Events (SSE) stream broadcasting live progress updates.
+  * Event Stream Data:
+    `data: {"jobId": "...", "stage": "MODEL_INFERENCE", "progress": 55, "message": "Separating stems..."}`
+
+- GET /api/assets/[id]
+  * Description: Securely streams media assets with HTTP Range header support and correct MIME types.
+
+- GET /api/health
+  * Description: System health, disk usage statistics, and microservice status.
+  * Response (200 OK):
+    `{ "status": "healthy", "storage": { "totalBytes": 104857600, "formattedSize": "100 MB", "filesCount": 24 } }`
+
+
+================================================================================
+7. PROJECT DIRECTORY & FILE STRUCTURE
+================================================================================
+
+Aura-SplitStream/
+├── .env.example                     # Environment template (Secrets, URLs, Configs)
+├── package.json                     # Node.js dependencies and operational scripts
+├── tsconfig.json                    # TypeScript compiler configuration
+├── tailwind.config.ts               # Custom Apple-inspired dark mode palette
+├── next.config.mjs                  # Next.js bundler and security configurations
+├── prisma/
+│   └── schema.prisma                # SQLite data models (User, Job, MediaAsset, etc.)
+├── public/                          # Static assets and favicon
+├── services/
+│   └── separation-service/          # Python Deep Learning Microservice
+│       ├── main.py                  # FastAPI application & REST endpoints
+│       ├── engine.py                # Demucs v4 / Spleeter PyTorch separation engine
+│       ├── requirements.txt         # PyTorch, torchaudio, Demucs, FastAPI, Uvicorn
+│       └── README.md                # Python microservice setup instructions
+└── src/
+    ├── app/                         # Next.js App Router (Pages, Layouts, API Routes)
+    │   ├── (auth)/                  # Authentication Pages
+    │   │   ├── login/page.tsx       # User sign-in interface
+    │   │   └── signup/page.tsx      # User registration interface
+    │   ├── (main)/                  # Main Application Pages
+    │   │   ├── page.tsx             # Studio Homepage & Feature Matrix
+    │   │   ├── stems/page.tsx       # Stem Separator & Multi-track Mixer
+    │   │   ├── download/page.tsx    # Link Downloader & Metadata Inspector
+    │   │   ├── translate/page.tsx   # Speech-to-Speech Translation Studio
+    │   │   ├── mashup/page.tsx      # Harmonic Mashup & Stem Blender Studio
+    │   │   ├── chords/page.tsx      # AI Chord Detector & Live Mic Practice
+    │   │   ├── audio-player/        # Local-first Audiophile Audio Player
+    │   │   ├── video-player/        # Dual Local/YouTube Video Player
+    │   │   └── status/page.tsx      # System health & Storage monitor
+    │   ├── api/                     # REST & SSE Endpoint Routes
+    │   │   ├── assets/[id]/         # Media asset binary streaming
+    │   │   ├── auth/                # NextAuth credential and OAuth routes
+    │   │   ├── chords/              # Chord detection handler
+    │   │   ├── download/            # Media download & preview handlers
+    │   │   ├── health/              # Server health & storage statistics
+    │   │   ├── jobs/[id]/           # Job polling and detail retrieval
+    │   │   ├── mashup/              # Mashup creation handler
+    │   │   ├── realtime/            # SSE real-time streaming endpoint
+    │   │   ├── stems/separate/      # Source separation trigger endpoint
+    │   │   └── translate/           # Speech translation pipeline endpoint
+    │   ├── layout.tsx               # Root application layout & shell
+    │   ├── globals.css              # Global styles & custom scrollbars
+    │   ├── not-found.tsx            # Custom 404 page
+    │   └── error.tsx                # Global error boundary
+    ├── domain/                      # Enterprise Business Rules (Pure Logic)
+    │   ├── entities/                # Job.ts, MediaAsset.ts, User.ts
+    │   ├── events/                  # JobStageProgressEvent.ts, JobCompletedEvent.ts
+    │   ├── repositories/            # IJobRepository.ts, IAssetRepository.ts, IUserRepository.ts
+    │   └── value-objects/           # MediaFormats.ts, ChordData.ts, MashupConfig.ts,
+    │                                # SupportedLanguages.ts, SourceUrlValidator.ts
+    ├── application/                 # Application Business Rules (Use Cases & Ports)
+    │   ├── ports/                   # SeparationProviderPort.ts, TranscoderPort.ts,
+    │   │                            # MediaSourceResolverPort.ts, ASRProviderPort.ts,
+    │   │                            # TranslationProviderPort.ts, TTSProviderPort.ts,
+    │   │                            # ChordDetectorPort.ts, RealtimePublisherPort.ts, QueuePort.ts
+    │   └── use-cases/               # SeparateStemsUseCase.ts, DownloadMediaUseCase.ts,
+    │                                # TranslateAndSpeakUseCase.ts, CreateMashupUseCase.ts,
+    │                                # DetectChordsUseCase.ts, GetJobStatusUseCase.ts
+    ├── infrastructure/              # Frameworks, Drivers & Adapters
+    │   ├── persistence/prisma/      # Prisma repositories for Jobs, Assets, Users
+    │   ├── media/                   # transcoder.ts (FFmpeg & FFprobe validation engine)
+    │   ├── queue/                   # job-queue.ts (In-process async task scheduler)
+    │   ├── realtime/                # realtime-bus.ts (SSE event publisher)
+    │   ├── storage/                 # retention-manager.ts (Disk sweep & cleanup)
+    │   └── ratelimit/               # In-memory IP and job rate limiting
+    ├── providers/                   # External Service Implementations
+    │   ├── separation/              # SeparationClient.ts (FastAPI / DSP Demucs adapter)
+    │   ├── media-resolver/          # YtDlpMediaResolver.ts (yt-dlp wrapper)
+    │   ├── asr/                     # WhisperASRProvider.ts (Speech recognition)
+    │   ├── translation/             # NeuralTranslationProvider.ts (Machine translation)
+    │   ├── tts/                     # NeuralTTSProvider.ts (Voice synthesis)
+    │   └── chords/                  # ChordDetectorProvider.ts (Harmonic chroma detection)
+    ├── components/                  # UI Components & Apple-Style Design System
+    │   ├── audio/                   # StemMixer.tsx, GlobalAudioPlayer.tsx, WaveformVisualizer.tsx, VUMeter.tsx
+    │   ├── chords/                  # ChordChart.tsx, ChordDiagram.tsx, LiveMicPractice.tsx
+    │   ├── player/                  # GraphicEqualizer.tsx, SyncedLyricsView.tsx
+    │   ├── video/                   # VideoPlayerView.tsx, YouTubeEmbed.tsx
+    │   ├── visual/                  # AmbientAudioHorizon.tsx, AudioVisualizerCanvas.tsx, ChordHero.tsx, etc.
+    │   ├── layout/                  # AppShell.tsx, GlassNav.tsx, FullscreenOverlayNav.tsx, Footer.tsx
+    │   ├── cursor/                  # CustomCursor.tsx, MagneticWrapper.tsx
+    │   └── ui/                      # Button.tsx, Card.tsx, Modal.tsx, Slider.tsx, Knob.tsx,
+    │                                # StageStepper.tsx, ProgressRing.tsx, FileDropzone.tsx, Toast.tsx
+    └── lib/                         # Utilities & Core Services
+        ├── container.ts             # Dependency Injection Container (Singleton)
+        ├── auth.ts                  # NextAuth options & security handler
+        ├── db.ts                    # PrismaClient singleton
+        ├── localLibrary.ts          # IndexedDB client-side database helper
+        ├── toast.ts                 # Toast notification dispatcher
+        ├── useMicRecorder.ts        # Browser microphone recording hook
+        ├── useRealtimeJob.ts        # React hook for SSE job subscription
+        └── utils.ts                 # Formatting, class merging, time conversion
+
+
+================================================================================
+8. STEP-BY-STEP WORKING LIFECYCLE (UNDER THE HOOD)
+================================================================================
+
+--------------------------------------------------------------------------------
+WORKFLOW A: AI STEM SEPARATION RUNTIME LIFECYCLE
+--------------------------------------------------------------------------------
+1. Client Submission:
+   - User drops an audio file (e.g., `song.mp3`) on `/stems` and clicks "Separate".
+   - Browser sends `multipart/form-data` to `/api/stems/separate`.
+2. Job Initialization:
+   - API creates a `Job` record in SQLite (`status = PENDING`, `stage = ANALYSIS`).
+   - The job is pushed to the asynchronous `JobQueue`.
+   - API immediately returns `{ jobId: "job-123" }` to client.
+3. Real-Time Connection:
+   - Client opens an EventSource connection to `/api/realtime?jobId=job-123`.
+4. Stage 1 — Analysis (0% -> 15%):
+   - Worker picks up job and updates stage to `ANALYSIS`.
+   - FFprobe inspects input file: audio codecs, channels, bitrate, sample rate.
+   - RealtimeBus broadcasts progress event to client.
+5. Stage 2 — Model Inference (15% -> 65%):
+   - Worker updates stage to `MODEL_INFERENCE`.
+   - `SeparationClient` checks if FastAPI Demucs microservice is online:
+     * If ONLINE: Sends audio stream to Python service (`POST /api/separate`).
+       Demucs v4 Hybrid Transformer executes deep inference on GPU/CPU.
+     * If OFFLINE: Automatically falls back to built-in DSP separation engine
+       using STFT frequency masking and harmonic/percussive decomposition.
+   - RealtimeBus streams incremental progress ticks.
+6. Stage 3 — Stem Reconstruction (65% -> 85%):
+   - Worker receives isolated channel matrices (Vocals, Drums, Bass, Other).
+   - FFmpeg transcodes each stem into target format (MP3 320kbps, WAV 24-bit, or FLAC).
+   - Generates an additional "Instrumental" stem by sub-mixing Drums + Bass + Other.
+7. Stage 4 — Export & Integrity (85% -> 100%):
+   - FFprobe validates the codec headers and stream continuity of every generated stem.
+   - Generates 100-point normalized waveform peak arrays for each stem.
+   - Creates `MediaAsset` records in SQLite for each stem.
+   - Job status is marked as `COMPLETED`.
+8. Interactive Delivery:
+   - SSE emits completion event.
+   - Client UI seamlessly renders the multi-track `StemMixer` with live waveforms,
+     individual volume faders, solo/mute buttons, and download triggers.
+
+--------------------------------------------------------------------------------
+WORKFLOW B: SPEECH-TO-SPEECH TRANSLATION LIFECYCLE
+--------------------------------------------------------------------------------
+1. Client Input:
+   - User speaks into microphone on `/translate` or selects an audio file.
+2. Job Queueing & SSE Hook:
+   - Request dispatched to `/api/translate`; job queued and SSE connection opened.
+3. Transcription (ASR):
+   - `WhisperASRProvider` processes audio and outputs source language transcript.
+   - Broadcasts transcript preview to client UI.
+4. Translation (Neural MT):
+   - `NeuralTranslationProvider` translates text into target language (e.g., English -> Japanese).
+5. Synthesis (Neural TTS):
+   - `NeuralTTSProvider` synthesizes natural, expressive voice audio in target language.
+   - FFmpeg applies subtle loudness equalization.
+6. Result:
+   - Client receives side-by-side bilingual cards with editable text and dual audio players.
+
+
+================================================================================
+9. SETUP, INSTALLATION & RUNNING GUIDE
+================================================================================
+
+--------------------------------------------------------------------------------
+PREREQUISITES
+--------------------------------------------------------------------------------
+1. Node.js: Version 18.0.0 or higher (Node 20+ / 24+ recommended).
+2. Python: Version 3.10 or higher (Required only if running ML separation service).
+3. FFmpeg & FFprobe: Included automatically via `ffmpeg-static` / `ffprobe-static`,
+   or available in system PATH.
+4. yt-dlp: (Optional for link extraction; install via pip or brew).
+
+--------------------------------------------------------------------------------
+QUICK START INSTRUCTIONS
+--------------------------------------------------------------------------------
+
+1. Clone Repository & Install Dependencies:
+   ```bash
+   git clone https://github.com/Samuel190805/Aura-SplitStream.git
+   cd Aura-SplitStream
+   npm install
+   ```
+
+2. Configure Environment Variables:
+   ```bash
+   cp .env.example .env
+   ```
+   (Edit `.env` if custom ports, API keys, or OAuth secrets are needed).
+
+3. Initialize SQLite Database via Prisma:
+   ```bash
+   npx prisma db push
+   ```
+
+4. Start Next.js Development Server:
+   ```bash
+   npm run dev
+   ```
+   Open your browser at http://localhost:3000
+
+5. (Optional) Run the Deep Learning Python Separation Microservice:
+   ```bash
+   cd services/separation-service
+   python -m venv venv
+   source venv/bin/activate   # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   uvicorn main:app --reload --port 8000
+   ```
+   *Note: If the Python service is not started, SplitStream will automatically
+   and seamlessly use its built-in DSP separation engine.*
+
+--------------------------------------------------------------------------------
+NPM SCRIPTS REFERENCE
+--------------------------------------------------------------------------------
+- `npm run dev`: Starts Next.js development server with hot reload on 0.0.0.0:3000.
+- `npm run build`: Generates Prisma client and compiles optimized Next.js production build.
+- `npm run start`: Launches production server.
+- `npm run lint`: Runs ESLint across `src` directory.
+- `npm run prisma:generate`: Recompiles Prisma client artifacts.
+- `npm run prisma:push`: Synchronizes database schema directly with SQLite.
+- `npm run prisma:studio`: Opens visual web GUI for inspecting SQLite tables.
+
+================================================================================
+END OF PROJECT OVERVIEW
+================================================================================
