@@ -58,23 +58,35 @@ model VerificationToken {
 }
 
 model Job {
-  id          String       @id @default(cuid())
-  userId      String?
-  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  type        String       // STEM_SEPARATION | MEDIA_DOWNLOAD | TRANSLATE_SPEAK
-  status      String       @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
-  stage       String       @default("ANALYSIS") // 4-stage SSE pattern: ANALYSIS | MODEL_INFERENCE | STEM_RECONSTRUCTION | EXPORT, etc.
-  progress    Float        @default(0)
-  message     String?
-  inputParams String       @default("{}") // JSON string of parameters (sourceUrl, fileName, options, etc.)
-  error       String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  completedAt DateTime?
-  mediaAssets MediaAsset[]
+  id              String       @id @default(cuid())
+  userId          String?
+  user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  type            String       // STEM_SEPARATION | MEDIA_DOWNLOAD | TRANSLATE_SPEAK | CHORD_DETECTION | MASHUP_RENDER | MEDIA_CONVERSION
+  status          String       @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
+  stage           String       @default("ANALYSIS") // ANALYSIS | MODEL_INFERENCE | STEM_RECONSTRUCTION | EXPORT, etc.
+  progress        Float        @default(0)
+  message         String?
+  inputParams     String       @default("{}") // JSON string of parameters (sourceUrl, fileName, options, etc.)
+  result          String?      // JSON string of result data
+  error           String?
+  errorCode       String?      // Typed AppErrorCode (INVALID_INPUT, PROCESSING_FAILED, etc.)
+  errorDetails    String?      // JSON string of structured error metadata
+  attempts        Int          @default(0)
+  lockedBy        String?
+  lockedAt        DateTime?
+  heartbeatAt     DateTime?
+  cancelRequested Boolean      @default(false)
+  lane            String       @default("media") // heavy-ml | io | media | speech
+  seenByUser      Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  startedAt       DateTime?
+  updatedAt       DateTime     @updatedAt
+  completedAt     DateTime?
+  mediaAssets     MediaAsset[]
 
   @@index([userId])
   @@index([status])
+  @@index([lane, status])
 }
 
 model MediaAsset {
@@ -84,7 +96,7 @@ model MediaAsset {
   userId       String?
   user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   name         String
-  kind         String   // ORIGINAL | STEM_VOCALS | STEM_INSTRUMENT | DOWNLOAD_AUDIO | DOWNLOAD_VIDEO | TRANSLATED_AUDIO | MASHUP
+  kind         String   // ORIGINAL | STEM_VOCALS | STEM_INSTRUMENT | DOWNLOAD_AUDIO | DOWNLOAD_VIDEO | TRANSLATED_AUDIO | MASHUP | CONVERTED_MEDIA
   filePath     String
   mimeType     String
   format       String   // mp3 | wav | flac | mp4 | etc.

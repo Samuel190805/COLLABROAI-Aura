@@ -69,7 +69,8 @@ function MashupContent() {
     isProcessing,
     watchJob,
     reset,
-  } = useRealtimeJob();
+    cancel,
+  } = useRealtimeJob("MASHUP_RENDER");
 
   const handleStartMashup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,7 +133,7 @@ function MashupContent() {
 
       const data = await res.json();
       if (data.jobId) {
-        watchJob(data.jobId);
+        watchJob(data.jobId, "MASHUP_RENDER");
       } else {
         throw new Error("Missing jobId in response");
       }

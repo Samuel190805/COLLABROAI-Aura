@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { container } from "@/lib/container";
 import { calculateCompatibility } from "@/domain/value-objects/MashupConfig";
+import { handleRoute } from "@/lib/handleRoute";
+
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
+  return handleRoute(async () => {
+    const body = await req.json().catch(() => ({}));
     const { keyA, camelotA, bpmA, keyB, camelotB, bpmB } = body;
 
     const compatibility = calculateCompatibility(
@@ -17,8 +19,5 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({ success: true, compatibility });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Compatibility calculation failed";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
-  }
+  });
 }

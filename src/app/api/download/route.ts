@@ -4,51 +4,40 @@ import { authOptions } from "@/lib/auth";
 import { container } from "@/lib/container";
 import { Job } from "@/domain/entities/Job";
 import { validateAndNormalizeSourceUrl } from "@/domain/value-objects/SourceUrlValidator";
+import { handleRoute } from "@/lib/handleRoute";
+import { AppError } from "@/domain/errors/AppError";
+import { rateLimiter } from "@/infrastructure/ratelimit/rate-limiter";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
-  try {
+  return handleRoute(async () => {
     const session = await getServerSession(authOptions);
     const userId = (session?.user as any)?.id || null;
     const clientIp = req.headers.get("x-forwarded-for") || (req as any).ip || "127.0.0.1";
 
     // Rate limiting check
-    const { rateLimiter } = await import("@/infrastructure/ratelimit/rate-limiter");
     const rateCheck = rateLimiter.check(userId || clientIp, "download");
     if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: "Download rate limit exceeded. Please wait before queuing more downloads.",
-          resetTime: rateCheck.resetTime,
-        },
-        {
-          status: 429,
-          headers: rateLimiter.getRateLimitHeaders(rateCheck),
-        }
-      );
+      throw AppError.rateLimited("Download rate limit exceeded. Please wait before queuing more downloads.");
     }
 
     const body = await req.json().catch(() => ({}));
     const { url, targetFormat = "mp3", qualityOrResolution = "320k", mediaType = "audio" } = body;
 
     if (!url || typeof url !== "string" || !url.trim()) {
-      return NextResponse.json({ error: "A valid URL is required" }, { status: 400 });
+      throw AppError.invalidInput("A valid URL is required");
     }
 
     const validation = validateAndNormalizeSourceUrl(url.trim());
     if (validation.isDrmProtected) {
-      return NextResponse.json(
-        { error: "This source isn't supported — it may be DRM-protected." },
-        { status: 400 }
-      );
+      throw AppError.unsupportedFormat("This source isn't supported — it may be DRM-protected.");
     }
     if (!validation.isValid) {
-      return NextResponse.json(
-        { error: validation.error || "Invalid URL" },
-        { status: 400 }
-      );
+      throw AppError.invalidInput(validation.error || "Invalid URL");
     }
 
-    const targetUrl = validation.normalizedUrl;
     const jobId = `job_dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     const job = new Job({
@@ -60,7 +49,7 @@ export async function POST(req: NextRequest) {
       progress: 0,
       message: "Queued for media download & transcoding",
       inputParams: {
-        url,
+        url: validation.normalizedUrl,
         targetFormat,
         qualityOrResolution,
         mediaType,
@@ -71,28 +60,26 @@ export async function POST(req: NextRequest) {
 
     await container.jobRepository.create(job);
 
-    // Enqueue async execution
     await container.queue.enqueue(jobId, async () => {
       await container.downloadMediaUseCase.execute({
         jobId,
         userId,
-        url,
+        url: validation.normalizedUrl,
         targetFormat: targetFormat as any,
         qualityOrResolution,
         mediaType: mediaType as any,
       });
     });
 
-    return NextResponse.json({
-      success: true,
-      jobId,
-      status: "PENDING",
-      stage: "RESOLVING",
-      message: "Download job initialized",
-    });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Failed to initialize media download";
-    console.error("[/api/download] Error:", err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
-  }
+    return NextResponse.json(
+      {
+        success: true,
+        jobId,
+        status: "PENDING",
+        stage: "RESOLVING",
+        message: "Download job initialized",
+      },
+      { headers: rateLimiter.getRateLimitHeaders(rateCheck) }
+    );
+  });
 }

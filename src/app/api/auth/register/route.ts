@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
+import { handleRoute } from "@/lib/handleRoute";
+import { AppError } from "@/domain/errors/AppError";
+
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  try {
-    const { name, email, password } = await req.json();
+  return handleRoute(async () => {
+    const { name, email, password } = await req.json().catch(() => ({}));
 
     if (!email || !password) {
-      return NextResponse.json(
-        { error: "Email and password are required" },
-        { status: 400 }
-      );
+      throw AppError.invalidInput("Email and password are required");
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
 
     if (existingUser) {
       return NextResponse.json(
-        { error: "A user with this email already exists" },
+        { error: { code: "INVALID_INPUT", message: "A user with this email already exists" } },
         { status: 409 }
       );
     }
@@ -38,8 +39,5 @@ export async function POST(req: NextRequest) {
       success: true,
       user: { id: user.id, name: user.name, email: user.email },
     });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Registration failed";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
-  }
+  });
 }

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Noto_Sans_Tamil } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 
@@ -15,6 +15,13 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
 });
 
+const notoSansTamil = Noto_Sans_Tamil({
+  subsets: ["tamil"],
+  display: "swap",
+  variable: "--font-tamil",
+  weight: ["400", "500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "SplitStream — Audio & Video Workstation",
   description:
@@ -27,7 +34,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`dark ${inter.variable} ${jetbrainsMono.variable} ${notoSansTamil.variable}`}
+      suppressHydrationWarning
+    >
       <body className="antialiased min-h-screen bg-mono-bg text-mono-ink font-sans selection:bg-mono-ink selection:text-mono-bg">
         <AppShell>{children}</AppShell>
       </body>

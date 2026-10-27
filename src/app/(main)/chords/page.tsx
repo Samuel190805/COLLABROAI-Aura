@@ -86,7 +86,8 @@ function ChordDetectorContent() {
     isProcessing,
     watchJob,
     reset,
-  } = useRealtimeJob();
+    cancel,
+  } = useRealtimeJob("CHORD_DETECTION");
 
   // On job completion, extract chord timeline, sections, and metadata
   useEffect(() => {
@@ -233,7 +234,7 @@ function ChordDetectorContent() {
         throw new Error("No job ID received from detection service");
       }
 
-      watchJob(targetJobId);
+      watchJob(targetJobId, "CHORD_DETECTION");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to initiate chord detection";
       setSubmitError(msg);

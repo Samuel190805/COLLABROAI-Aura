@@ -78,7 +78,8 @@ function MediaConverterContent() {
     isProcessing,
     watchJob,
     reset,
-  } = useRealtimeJob();
+    cancel,
+  } = useRealtimeJob("MEDIA_CONVERSION");
 
   // Watch for job completion & resolve asset
   useEffect(() => {
@@ -148,7 +149,7 @@ function MediaConverterContent() {
 
       const data = await res.json();
       if (data.jobId) {
-        watchJob(data.jobId);
+        watchJob(data.jobId, "MEDIA_CONVERSION");
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Conversion failed to start";

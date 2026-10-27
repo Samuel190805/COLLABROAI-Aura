@@ -8,12 +8,13 @@ class RealtimeBus implements RealtimePublisherPort {
 
   constructor() {
     this.emitter = new EventEmitter();
-    this.emitter.setMaxListeners(200);
+    this.emitter.setMaxListeners(500);
   }
 
   publish(jobId: string, payload: JobRealtimePayload): void {
     this.latestCache.set(jobId, payload);
     this.emitter.emit(`job:${jobId}`, payload);
+    this.emitter.emit("job:update", payload);
   }
 
   subscribe(
@@ -25,19 +26,26 @@ class RealtimeBus implements RealtimePublisherPort {
     // Send latest cached state immediately if present
     const cached = this.latestCache.get(jobId);
     if (cached) {
-      setTimeout(() => callback(cached), 10);
+      setTimeout(() => callback(cached), 0);
     }
 
     this.emitter.on(channel, callback);
     return () => {
       this.emitter.off(channel, callback);
       if (this.emitter.listenerCount(channel) === 0) {
-        // Clean up cache after all subscribers disconnect if job is finished
         const last = this.latestCache.get(jobId);
-        if (last && (last.status === "COMPLETED" || last.status === "FAILED")) {
-          setTimeout(() => this.latestCache.delete(jobId), 60000);
+        if (last && (last.status === "COMPLETED" || last.status === "FAILED" || last.status === "CANCELLED")) {
+          setTimeout(() => this.latestCache.delete(jobId), 120000);
         }
       }
+    };
+  }
+
+  subscribeAll(callback: (payload: JobRealtimePayload) => void): () => void {
+    const channel = "job:update";
+    this.emitter.on(channel, callback);
+    return () => {
+      this.emitter.off(channel, callback);
     };
   }
 
@@ -46,14 +54,11 @@ class RealtimeBus implements RealtimePublisherPort {
   }
 }
 
-// Global singleton instance for Next.js runtime
-declare global {
-  var realtimeBus: RealtimeBus | undefined;
-}
+const globalForBus = globalThis as unknown as { realtimeBus: RealtimeBus | undefined };
 
-export const realtimeBus = global.realtimeBus || new RealtimeBus();
+export const realtimeBus = globalForBus.realtimeBus ?? new RealtimeBus();
 if (process.env.NODE_ENV !== "production") {
-  global.realtimeBus = realtimeBus;
+  globalForBus.realtimeBus = realtimeBus;
 }
 
 export default realtimeBus;

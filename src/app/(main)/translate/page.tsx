@@ -36,7 +36,7 @@ export default function TranslateSpeakPage() {
   const [translatedText, setTranslatedText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sourceLanguage, setSourceLanguage] = useState("auto");
-  const [targetLanguage, setTargetLanguage] = useState("es");
+  const [targetLanguage, setTargetLanguage] = useState("ta");
   const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
   const [speechSpeed, setSpeechSpeed] = useState(1.0);
   const [preserveVoice, setPreserveVoice] = useState(true);
@@ -49,6 +49,31 @@ export default function TranslateSpeakPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [stageError, setStageError] = useState<{ stage: string; message: string } | null>(null);
+
+  const voiceOptions = React.useMemo(() => {
+    if (targetLanguage === "ta") {
+      return [
+        { value: "female", label: "அமுதவல்லி / Amudhavalli (Tamil Female)" },
+        { value: "male", label: "செல்வகுமார் / Selvakumar (Tamil Male)" },
+      ];
+    }
+    if (targetLanguage === "es") {
+      return [
+        { value: "female", label: "Lucia (Spanish Female)" },
+        { value: "male", label: "Mateo (Spanish Male)" },
+      ];
+    }
+    if (targetLanguage === "hi") {
+      return [
+        { value: "female", label: "Swara (Hindi Female)" },
+        { value: "male", label: "Madhur (Hindi Male)" },
+      ];
+    }
+    return [
+      { value: "female", label: "Natural Voice (Female)" },
+      { value: "male", label: "Natural Voice (Male)" },
+    ];
+  }, [targetLanguage]);
 
   const { playTrack } = useGlobalAudio();
 
@@ -81,7 +106,8 @@ export default function TranslateSpeakPage() {
     isProcessing,
     watchJob,
     reset: resetJob,
-  } = useRealtimeJob();
+    cancel,
+  } = useRealtimeJob("TRANSLATE_SPEAK");
 
   const stagesList = [
     { id: "TRANSCRIBING", label: "Speech-to-Text", description: "16kHz Whisper ASR" },
@@ -263,7 +289,7 @@ export default function TranslateSpeakPage() {
         throw new Error(data.error || "Translation job failed to initialize");
       }
 
-      watchJob(data.jobId);
+      watchJob(data.jobId, "TRANSLATE_SPEAK");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Translation initiation failed";
       setErrorMsg(msg);
@@ -515,10 +541,7 @@ export default function TranslateSpeakPage() {
                     label="Voice Profile"
                     value={voiceGender}
                     onChange={(e) => setVoiceGender(e.target.value as any)}
-                    options={[
-                      { value: "female", label: "Natural Voice (Female)" },
-                      { value: "male", label: "Natural Voice (Male)" },
-                    ]}
+                    options={voiceOptions}
                   />
 
                   <Select

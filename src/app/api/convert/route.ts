@@ -3,12 +3,20 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { container } from "@/lib/container";
 import { Job } from "@/domain/entities/Job";
+import { handleRoute } from "@/lib/handleRoute";
+import { AppError } from "@/domain/errors/AppError";
 import path from "path";
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { retentionManager } from "@/infrastructure/storage/retention-manager";
 
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
 export async function POST(req: NextRequest) {
-  try {
+  return handleRoute(async () => {
     const session = await getServerSession(authOptions);
     const userId = (session?.user as any)?.id || null;
 
@@ -39,14 +47,14 @@ export async function POST(req: NextRequest) {
         inputType = "file";
         const sanitizedName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
         const uploadPath = path.join(jobWorkDir, `input_${sanitizedName}`);
-        const buffer = Buffer.from(await file.arrayBuffer());
-        await fs.writeFile(uploadPath, buffer);
+        const nodeStream = Readable.fromWeb(file.stream() as any);
+        await pipeline(nodeStream, createWriteStream(uploadPath));
         inputPath = uploadPath;
       } else if (urlParam && urlParam.trim()) {
         inputType = "url";
         sourceUrl = urlParam.trim();
       } else {
-        return NextResponse.json({ error: "Either a file or a valid URL is required" }, { status: 400 });
+        throw AppError.invalidInput("Either a file or a valid URL is required");
       }
     } else {
       const body = await req.json().catch(() => ({}));
@@ -62,7 +70,7 @@ export async function POST(req: NextRequest) {
         inputType = "file";
         inputPath = body.filePath.trim();
       } else {
-        return NextResponse.json({ error: "Either a URL or filePath must be provided" }, { status: 400 });
+        throw AppError.invalidInput("Either a URL or filePath must be provided");
       }
     }
 
@@ -77,6 +85,7 @@ export async function POST(req: NextRequest) {
       inputParams: {
         direction,
         inputType,
+        inputPath,
         outputFormat,
         resolution,
         visualType,
@@ -109,9 +118,5 @@ export async function POST(req: NextRequest) {
       stage: "RESOLVING",
       message: "Media conversion job initialized",
     });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Failed to initialize conversion";
-    console.error("[/api/convert] Error:", err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
-  }
+  });
 }

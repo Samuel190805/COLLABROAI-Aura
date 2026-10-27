@@ -52,8 +52,6 @@ export class NeuralTranslationProvider implements TranslationProviderPort {
     }
 
     // 2. High-Fidelity Google Neural MT with native Tamil (ta) and auto-detection support
-    // Documented Choice: Google Translate client endpoint provides complete, fluent translation
-    // for Tamil ('ta') as both source and target, alongside 100+ languages, with automatic source language detection.
     try {
       const src = !sourceLanguage || sourceLanguage === "auto" ? "auto" : sourceLanguage.split("-")[0];
       const tgt = targetLanguage.split("-")[0];
@@ -104,34 +102,6 @@ export class NeuralTranslationProvider implements TranslationProviderPort {
       }
     } catch (err: any) {
       console.warn("[NeuralTranslationProvider] MyMemory API note:", err.message);
-    }
-
-    // 3. Try LibreTranslate
-    try {
-      const res = await fetch("https://libretranslate.de/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          q: trimmed,
-          source: sourceLanguage === "auto" ? "en" : sourceLanguage,
-          target: targetLanguage,
-          format: "text",
-        }),
-        signal: AbortSignal.timeout(3000),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.translatedText) {
-          return {
-            translatedText: data.translatedText,
-            sourceLanguage: sourceLanguage === "auto" ? "en" : sourceLanguage,
-            targetLanguage,
-          };
-        }
-      }
-    } catch {
-      // ignore
     }
 
     // 4. Multi-lingual dictionary & phrase engine fallback
@@ -199,6 +169,14 @@ export class NeuralTranslationProvider implements TranslationProviderPort {
         "hello": "नमस्ते",
         "hello world": "नमस्ते दुनिया",
         "hello, welcome to splitstream!": "नमस्ते, SplitStream में आपका स्वागत है!",
+      },
+      ta: {
+        "welcome to splitstream": "ஸ்பிளிட்ஸ்ட்ரீமிற்கு வருக",
+        "welcome to splitstream. source separation, media downloading, and speech translation built with precision.":
+          "ஸ்பிளிட்ஸ்ட்ரீமிற்கு உங்களை வரவேற்கிறோம். துல்லியமாக உருவாக்கப்பட்ட இசைப் பிரித்தல், மீடியா பதிவிறக்கம் மற்றும் பேச்சு மொழிபெயர்ப்பு.",
+        "hello": "வணக்கம்",
+        "hello world": "வணக்கம் உலகம்",
+        "hello, welcome to splitstream!": "வணக்கம், ஸ்பிளிட்ஸ்ட்ரீமிற்கு உங்களை வரவேற்கிறோம்!",
       },
     };
 

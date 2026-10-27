@@ -9,6 +9,7 @@ import {
   RotateCcw,
   AlertCircle,
   ShieldCheck,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -23,8 +24,8 @@ import { useRealtimeJob } from "@/lib/useRealtimeJob";
 const STAGES = [
   { id: "ANALYSIS", label: "Analysis" },
   { id: "MODEL_INFERENCE", label: "De-Mixing" },
-  { id: "STEM_RECONSTRUCTION", label: "Validation" },
-  { id: "EXPORT", label: "Transcode" },
+  { id: "STEM_RECONSTRUCTION", label: "Refinement & Gating" },
+  { id: "EXPORT", label: "Transcode & Gate" },
 ];
 
 function StemSeparatorContent() {
@@ -50,7 +51,8 @@ function StemSeparatorContent() {
     isProcessing,
     watchJob,
     reset,
-  } = useRealtimeJob();
+    cancel,
+  } = useRealtimeJob("STEM_SEPARATION");
 
   useEffect(() => {
     if (initialUrl && !jobId) {
@@ -92,12 +94,12 @@ function StemSeparatorContent() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Server responded with ${res.status}`);
+        throw new Error(data.error?.message || data.error || `Server responded with ${res.status}`);
       }
 
       const data = await res.json();
       if (data.jobId) {
-        watchJob(data.jobId);
+        watchJob(data.jobId, "STEM_SEPARATION");
       } else {
         throw new Error("Missing jobId in response");
       }
@@ -120,12 +122,12 @@ function StemSeparatorContent() {
   const engine = firstMeta?.engine as "demucs" | "dsp-fallback" | undefined;
   const qualityLabel =
     firstMeta?.qualityLabel ||
-    (engine === "demucs" ? "Studio quality (Demucs)" : "Standard quality (offline mode)");
+    (engine === "demucs" ? "Studio quality (Demucs)" : "Standard quality (offline DSP mode)");
 
-  // Map 2 stems for mixer
-  const mixerTracks: StemTrack[] = (mediaAssets || []).map((a) => ({
+  // Exactly two stems: Vocals and Instrument (Section 4.1)
+  const mixerTracks: StemTrack[] = (mediaAssets || []).map((a: any) => ({
     id: a.id,
-    name: a.name,
+    name: a.name === "Vocals" ? "Vocals (Lead & Backing)" : "Instrument (Karaoke Backing)",
     kind: a.kind as "STEM_VOCALS" | "STEM_INSTRUMENT",
     url: a.filePath,
     waveformData: a.waveformData || undefined,
@@ -236,15 +238,20 @@ function StemSeparatorContent() {
 
               {/* Submit Error */}
               {(submitError || error) && (
-                <div className="p-3 border-hairline bg-mono-bgAlt text-xs font-mono text-mono-ink flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{submitError || error}</span>
+                <div className="p-3 border-hairline bg-mono-bgAlt text-xs font-mono text-mono-ink flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                    <span>{submitError || error}</span>
+                  </div>
+                  <Button variant="ghost" pill={false} onClick={handleReset} className="h-7 text-[11px] font-mono">
+                    Retry
+                  </Button>
                 </div>
               )}
 
               {/* Progress Stage Tracker */}
               {(isProcessing || isSubmitting) && (
-                <div className="pt-4 border-t-hairline">
+                <div className="pt-4 border-t-hairline space-y-3">
                   <StageStepper
                     stages={STAGES}
                     currentStageId={stage || "ANALYSIS"}
@@ -253,7 +260,7 @@ function StemSeparatorContent() {
                     isFailed={isFailed}
                   />
                   {message && (
-                    <p className="mt-2 font-mono text-[11px] text-mono-inkMuted text-center">
+                    <p className="font-mono text-[11px] text-mono-inkMuted text-center">
                       {message}
                     </p>
                   )}
@@ -265,16 +272,30 @@ function StemSeparatorContent() {
                 <span className="font-mono text-[11px] text-mono-inkMuted">
                   OUTPUT: EXACTLY 2 STEMS (VOCALS & INSTRUMENT)
                 </span>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  pill={false}
-                  isLoading={isSubmitting || isProcessing}
-                  disabled={isSubmitting || isProcessing}
-                  className="px-6 h-10 font-mono font-bold text-xs uppercase"
-                >
-                  {isProcessing ? "Separating Audio..." : "Separate Stems"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {isProcessing && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      pill={false}
+                      onClick={cancel}
+                      className="px-4 h-10 font-mono text-xs uppercase hover:bg-rose-500/10 hover:text-rose-400"
+                    >
+                      <XCircle className="w-3.5 h-3.5 mr-1" />
+                      Cancel
+                    </Button>
+                  )}
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    pill={false}
+                    isLoading={isSubmitting || isProcessing}
+                    disabled={isSubmitting || isProcessing}
+                    className="px-6 h-10 font-mono font-bold text-xs uppercase"
+                  >
+                    {isProcessing ? "Separating Audio..." : "Separate Stems"}
+                  </Button>
+                </div>
               </div>
             </form>
           </div>

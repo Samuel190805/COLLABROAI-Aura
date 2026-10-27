@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
-import { JobRealtimePayload } from "@/domain/events/JobEvents";
-import { JobStage, JobStatusType } from "@/domain/value-objects/JobStatus";
+import { useState, useEffect, useCallback } from "react";
+import { JobStage, JobStatusType, JobKind } from "@/domain/value-objects/JobStatus";
+import { useJobs, JobState } from "@/lib/jobs-context";
 
 export interface UseRealtimeJobState {
   jobId: string | null;
@@ -11,147 +11,103 @@ export interface UseRealtimeJobState {
   progress: number;
   message?: string;
   error?: string | null;
+  errorCode?: string | null;
+  result?: Record<string, unknown> | null;
   mediaAssets?: any[];
   isConnected: boolean;
   isCompleted: boolean;
   isFailed: boolean;
   isProcessing: boolean;
+  cancel: () => Promise<boolean>;
+  watchJob: (id: string, type?: JobKind) => void;
+  reset: () => void;
 }
 
-export function useRealtimeJob(initialJobId?: string | null) {
-  const [jobId, setJobId] = useState<string | null>(initialJobId || null);
-  const [state, setState] = useState<UseRealtimeJobState>({
-    jobId: initialJobId || null,
-    status: "IDLE",
-    stage: "IDLE",
-    progress: 0,
-    message: undefined,
-    error: null,
-    mediaAssets: undefined,
-    isConnected: false,
-    isCompleted: false,
-    isFailed: false,
-    isProcessing: false,
-  });
+const KNOWN_KINDS: Set<string> = new Set([
+  "STEM_SEPARATION",
+  "MEDIA_DOWNLOAD",
+  "TRANSLATE_SPEAK",
+  "CHORD_DETECTION",
+  "MASHUP_RENDER",
+  "MEDIA_CONVERSION",
+]);
 
-  const eventSourceRef = useRef<EventSource | null>(null);
+export function useRealtimeJob(initialJobIdOrType?: string | JobKind | null): UseRealtimeJobState {
+  const {
+    jobs,
+    latestByType,
+    cancelJob: globalCancelJob,
+    markJobSeen,
+    trackJob,
+    isConnected: globalConnected,
+  } = useJobs();
+
+  const isType = typeof initialJobIdOrType === "string" && KNOWN_KINDS.has(initialJobIdOrType);
+  const typeKind = isType ? (initialJobIdOrType as JobKind) : undefined;
+
+  const [explicitJobId, setExplicitJobId] = useState<string | null>(
+    isType ? null : initialJobIdOrType || null
+  );
+
+  // Determine effective job ID: explicit ID first, or latest for this feature type
+  const effectiveJobId =
+    explicitJobId || (typeKind && latestByType[typeKind] ? latestByType[typeKind]!.id : null);
+
+  const currentJob: JobState | undefined = effectiveJobId ? jobs[effectiveJobId] : undefined;
+
+  // Mark job seen when user views completed job on this page
+  useEffect(() => {
+    if (effectiveJobId && currentJob && (currentJob.status === "COMPLETED" || currentJob.status === "FAILED")) {
+      if (!currentJob.seenByUser) {
+        markJobSeen(effectiveJobId).catch(() => {});
+      }
+    }
+  }, [effectiveJobId, currentJob, markJobSeen]);
+
+  const watchJob = useCallback(
+    (id: string, type?: JobKind) => {
+      setExplicitJobId(id);
+      if (type || typeKind) {
+        trackJob(id, type || typeKind!);
+      }
+    },
+    [trackJob, typeKind]
+  );
 
   const reset = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    setJobId(null);
-    setState({
-      jobId: null,
-      status: "IDLE",
-      stage: "IDLE",
-      progress: 0,
-      message: undefined,
-      error: null,
-      mediaAssets: undefined,
-      isConnected: false,
-      isCompleted: false,
-      isFailed: false,
-      isProcessing: false,
-    });
+    setExplicitJobId(null);
   }, []);
 
-  const watchJob = useCallback((id: string) => {
-    setJobId(id);
-    setState((prev) => ({
-      ...prev,
-      jobId: id,
-      status: "PENDING",
-      stage: "ANALYSIS",
-      progress: 0,
-      isProcessing: true,
-      isCompleted: false,
-      isFailed: false,
-      error: null,
-    }));
-  }, []);
-
-  useEffect(() => {
-    if (!jobId) return;
-
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+  const cancel = useCallback(async (): Promise<boolean> => {
+    if (effectiveJobId) {
+      return await globalCancelJob(effectiveJobId);
     }
+    return false;
+  }, [effectiveJobId, globalCancelJob]);
 
-    const sseUrl = `/api/realtime/job/${jobId}`;
-    const es = new EventSource(sseUrl);
-    eventSourceRef.current = es;
-
-    es.onopen = () => {
-      setState((prev) => ({ ...prev, isConnected: true }));
-    };
-
-    es.onmessage = (e) => {
-      try {
-        const data: JobRealtimePayload = JSON.parse(e.data);
-        const isCompleted = data.status === "COMPLETED";
-        const isFailed = data.status === "FAILED";
-        const isProcessing = data.status === "PROCESSING" || data.status === "PENDING";
-
-        setState((prev) => ({
-          ...prev,
-          status: data.status,
-          stage: data.stage,
-          progress: data.progress,
-          message: data.message,
-          error: data.error,
-          mediaAssets: data.mediaAssets || prev.mediaAssets,
-          isCompleted,
-          isFailed,
-          isProcessing,
-        }));
-
-        if (isCompleted || isFailed) {
-          es.close();
-        }
-      } catch (err) {
-        console.error("[useRealtimeJob] SSE parse error:", err);
-      }
-    };
-
-    es.onerror = () => {
-      // In case of SSE disconnect or error, check fallback via /api/jobs/[id]
-      fetch(`/api/jobs/${jobId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && data.job) {
-            const isCompleted = data.job.status === "COMPLETED";
-            const isFailed = data.job.status === "FAILED";
-            setState((prev) => ({
-              ...prev,
-              status: data.job.status,
-              stage: data.job.stage,
-              progress: data.job.progress,
-              message: data.job.message,
-              error: data.job.error,
-              mediaAssets: data.job.mediaAssets,
-              isCompleted,
-              isFailed,
-              isProcessing: !isCompleted && !isFailed,
-            }));
-            if (isCompleted || isFailed) {
-              es.close();
-            }
-          }
-        })
-        .catch(() => {});
-    };
-
-    return () => {
-      es.close();
-      eventSourceRef.current = null;
-    };
-  }, [jobId]);
+  const isCompleted = currentJob?.status === "COMPLETED";
+  const isFailed = currentJob?.status === "FAILED";
+  const isProcessing =
+    currentJob?.status === "PROCESSING" || currentJob?.status === "PENDING";
 
   return {
-    ...state,
+    jobId: effectiveJobId,
+    status: currentJob?.status || "IDLE",
+    stage: currentJob?.stage || "IDLE",
+    progress: currentJob ? currentJob.progress : 0,
+    message: currentJob?.message ?? undefined,
+    error: currentJob?.error ?? null,
+    errorCode: currentJob?.errorCode ?? null,
+    result: currentJob?.result ?? null,
+    mediaAssets: currentJob?.mediaAssets,
+    isConnected: globalConnected,
+    isCompleted,
+    isFailed,
+    isProcessing,
+    cancel,
     watchJob,
     reset,
   };
 }
+
+export default useRealtimeJob;

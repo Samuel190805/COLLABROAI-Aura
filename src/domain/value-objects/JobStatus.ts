@@ -13,9 +13,28 @@ export type JobKind =
   | "MASHUP_RENDER"
   | "MEDIA_CONVERSION";
 
+export type QueueLane = "heavy-ml" | "io" | "media" | "speech";
+
+export function getLaneForJobType(type: JobKind): QueueLane {
+  switch (type) {
+    case "STEM_SEPARATION":
+    case "CHORD_DETECTION":
+    case "MASHUP_RENDER":
+      return "heavy-ml";
+    case "MEDIA_DOWNLOAD":
+      return "io";
+    case "TRANSLATE_SPEAK":
+      return "speech";
+    case "MEDIA_CONVERSION":
+    default:
+      return "media";
+  }
+}
+
 export type StemSeparationStage =
   | "ANALYSIS"
   | "MODEL_INFERENCE"
+  | "REFINEMENT"
   | "STEM_RECONSTRUCTION"
   | "EXPORT";
 

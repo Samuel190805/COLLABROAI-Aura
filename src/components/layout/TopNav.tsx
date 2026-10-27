@@ -19,14 +19,23 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useJobs } from "@/lib/jobs-context";
+import { JobKind } from "@/domain/value-objects/JobStatus";
 
-const NAV_ITEMS = [
-  { href: "/stems", label: "Splitter", icon: Scissors },
-  { href: "/download", label: "Downloader", icon: Download },
-  { href: "/convert", label: "Converter", icon: ArrowLeftRight },
-  { href: "/translate", label: "Translate", icon: Languages },
-  { href: "/mashup", label: "Mashup", icon: Layers },
-  { href: "/chords", label: "Chords", icon: Sparkles },
+interface NavItemConfig {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  jobType?: JobKind;
+}
+
+const NAV_ITEMS: NavItemConfig[] = [
+  { href: "/stems", label: "Splitter", icon: Scissors, jobType: "STEM_SEPARATION" },
+  { href: "/download", label: "Downloader", icon: Download, jobType: "MEDIA_DOWNLOAD" },
+  { href: "/convert", label: "Converter", icon: ArrowLeftRight, jobType: "MEDIA_CONVERSION" },
+  { href: "/translate", label: "Translate", icon: Languages, jobType: "TRANSLATE_SPEAK" },
+  { href: "/mashup", label: "Mashup", icon: Layers, jobType: "MASHUP_RENDER" },
+  { href: "/chords", label: "Chords", icon: Sparkles, jobType: "CHORD_DETECTION" },
   { href: "/player", label: "Audio Player", icon: Music2 },
   { href: "/video-player", label: "Video Player", icon: Video },
   { href: "/status", label: "Status", icon: Activity },
@@ -36,9 +45,9 @@ export const TopNav: React.FC = () => {
   const pathname = usePathname();
   const [isDark, setIsDark] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { unseenCountForType } = useJobs();
 
   useEffect(() => {
-    // Initial theme detection
     const savedTheme = localStorage.getItem("theme");
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     const shouldBeDark = savedTheme ? savedTheme === "dark" : prefersDark;
@@ -82,13 +91,14 @@ export const TopNav: React.FC = () => {
           {NAV_ITEMS.map((item) => {
             const isActive = pathname.startsWith(item.href);
             const Icon = item.icon;
+            const unseenCount = item.jobType ? unseenCountForType(item.jobType) : 0;
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium tracking-tight rounded-sm transition-colors duration-150",
+                  "relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium tracking-tight rounded-sm transition-colors duration-150",
                   isActive
                     ? "bg-mono-ink text-mono-bg"
                     : "text-mono-inkMuted hover:text-mono-ink hover:bg-mono-bgAlt"
@@ -96,6 +106,12 @@ export const TopNav: React.FC = () => {
               >
                 <Icon className="w-3.5 h-3.5 stroke-[1.5]" />
                 <span>{item.label}</span>
+                {unseenCount > 0 && (
+                  <span className="relative flex h-2 w-2 ml-0.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -137,6 +153,7 @@ export const TopNav: React.FC = () => {
           {NAV_ITEMS.map((item) => {
             const isActive = pathname.startsWith(item.href);
             const Icon = item.icon;
+            const unseenCount = item.jobType ? unseenCountForType(item.jobType) : 0;
 
             return (
               <Link
@@ -144,14 +161,19 @@ export const TopNav: React.FC = () => {
                 href={item.href}
                 onClick={() => setMobileMenuOpen(false)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 text-xs font-medium tracking-tight rounded-sm transition-colors",
+                  "flex items-center justify-between px-3 py-2 text-xs font-medium tracking-tight rounded-sm transition-colors",
                   isActive
                     ? "bg-mono-ink text-mono-bg"
                     : "text-mono-inkMuted hover:text-mono-ink hover:bg-mono-bgAlt"
                 )}
               >
-                <Icon className="w-4 h-4 stroke-[1.5]" />
-                <span>{item.label}</span>
+                <div className="flex items-center gap-2">
+                  <Icon className="w-4 h-4 stroke-[1.5]" />
+                  <span>{item.label}</span>
+                </div>
+                {unseenCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                )}
               </Link>
             );
           })}

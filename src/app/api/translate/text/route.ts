@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { container } from "@/lib/container";
+import { handleRoute } from "@/lib/handleRoute";
+import { AppError } from "@/domain/errors/AppError";
+
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  try {
-    const { text, targetLanguage = "es", sourceLanguage = "auto" } = await req.json();
+  return handleRoute(async () => {
+    const { text, targetLanguage = "ta", sourceLanguage = "auto" } = await req.json().catch(() => ({}));
 
     if (!text || typeof text !== "string" || !text.trim()) {
-      return NextResponse.json({ error: "Text is required" }, { status: 400 });
+      throw AppError.invalidInput("Text is required");
     }
 
     const result = await container.translationProvider.translate(
@@ -21,9 +25,5 @@ export async function POST(req: NextRequest) {
       sourceLanguage: result.sourceLanguage,
       targetLanguage: result.targetLanguage,
     });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Translation failed";
-    console.error("[/api/translate/text] Error:", err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
-  }
+  });
 }

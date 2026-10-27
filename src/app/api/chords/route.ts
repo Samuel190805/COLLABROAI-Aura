@@ -6,27 +6,26 @@ import { Job } from "@/domain/entities/Job";
 import { validateAndNormalizeSourceUrl } from "@/domain/value-objects/SourceUrlValidator";
 import { rateLimiter } from "@/infrastructure/ratelimit/rate-limiter";
 import { retentionManager } from "@/infrastructure/storage/retention-manager";
+import { handleRoute } from "@/lib/handleRoute";
+import { AppError } from "@/domain/errors/AppError";
 import path from "path";
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
-  try {
+  return handleRoute(async () => {
     const session = await getServerSession(authOptions);
     const userId = (session?.user as any)?.id || null;
     const clientIp = req.headers.get("x-forwarded-for") || (req as any).ip || "127.0.0.1";
 
     const rateCheck = rateLimiter.check(userId || clientIp, "chord_detection");
     if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: "Chord detection rate limit exceeded. Please wait a moment.",
-          resetTime: rateCheck.resetTime,
-        },
-        {
-          status: 429,
-          headers: rateLimiter.getRateLimitHeaders(rateCheck),
-        }
-      );
+      throw AppError.rateLimited("Chord detection rate limit exceeded. Please wait a moment.");
     }
 
     const contentType = req.headers.get("content-type") || "";
@@ -47,9 +46,10 @@ export async function POST(req: NextRequest) {
 
       if (file && file.size > 0) {
         inputType = "file";
-        const buffer = Buffer.from(await file.arrayBuffer());
-        inputAudioPath = path.join(workDir, file.name.replace(/[^a-zA-Z0-9_.-]/g, "_") || "input.wav");
-        await fs.writeFile(inputAudioPath, buffer);
+        const sanitized = file.name.replace(/[^a-zA-Z0-9_.-]/g, "_") || "input.wav";
+        inputAudioPath = path.join(workDir, sanitized);
+        const nodeStream = Readable.fromWeb(file.stream() as any);
+        await pipeline(nodeStream, createWriteStream(inputAudioPath));
       } else if (queryParam && queryParam.trim()) {
         inputType = "search";
         query = queryParam.trim();
@@ -57,11 +57,11 @@ export async function POST(req: NextRequest) {
         inputType = "url";
         const validation = validateAndNormalizeSourceUrl(urlParam.trim());
         if (!validation.isValid) {
-          return NextResponse.json({ error: validation.error || "Invalid URL" }, { status: 400 });
+          throw AppError.invalidInput(validation.error || "Invalid URL");
         }
         url = validation.normalizedUrl;
       } else {
-        return NextResponse.json({ error: "A valid file, URL, or search query is required" }, { status: 400 });
+        throw AppError.invalidInput("A valid file, URL, or search query is required");
       }
     } else {
       const json = await req.json().catch(() => ({}));
@@ -72,20 +72,20 @@ export async function POST(req: NextRequest) {
 
       if (inputType === "url") {
         if (!url) {
-          return NextResponse.json({ error: "Media URL is required" }, { status: 400 });
+          throw AppError.invalidInput("Media URL is required");
         }
         const validation = validateAndNormalizeSourceUrl(url);
         if (!validation.isValid) {
-          return NextResponse.json({ error: validation.error || "Invalid URL" }, { status: 400 });
+          throw AppError.invalidInput(validation.error || "Invalid URL");
         }
         url = validation.normalizedUrl;
       } else if (inputType === "search") {
         if (!query) {
-          return NextResponse.json({ error: "Search query is required" }, { status: 400 });
+          throw AppError.invalidInput("Search query is required");
         }
       } else if (inputType === "file") {
         if (!inputAudioPath) {
-          return NextResponse.json({ error: "File path is required" }, { status: 400 });
+          throw AppError.invalidInput("Audio file path is required");
         }
       }
     }
@@ -97,12 +97,12 @@ export async function POST(req: NextRequest) {
       status: "PENDING",
       stage: "ANALYSIS",
       progress: 0,
-      message: "Queued for stem isolation & chord detection",
+      message: "Queued for chord detection and transcription",
       inputParams: {
         inputType,
         url,
         query,
-        filePath: inputAudioPath,
+        inputAudioPath,
       },
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -133,9 +133,5 @@ export async function POST(req: NextRequest) {
         headers: rateLimiter.getRateLimitHeaders(rateCheck),
       }
     );
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Failed to initialize chord detection";
-    console.error("[/api/chords] Error:", err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
-  }
+  });
 }
